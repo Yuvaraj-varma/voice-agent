@@ -1,9 +1,11 @@
-from fastapi import APIRouter, UploadFile, File, Form, Request
+# backend/routes/text_speech_routes.py
+from fastapi import APIRouter, Form, Request
 from fastapi.responses import StreamingResponse, JSONResponse
 import requests, os
 from dotenv import load_dotenv
 
 load_dotenv()
+
 router = APIRouter()
 
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
@@ -14,14 +16,17 @@ HEADERS_JSON = {
     "Content-Type": "application/json",
 }
 
-
 # ---------------------------------------------
-# 🔊 1. TEXT → SPEECH
+# 🔊 1. TEXT → SPEECH (TTS)
 # ---------------------------------------------
 @router.post("/speech")
-async def text_to_speech(request: Request, text: str = Form(None), voiceId: str = Form("Clyde")):
+async def text_to_speech(
+    request: Request,
+    text: str = Form(None),
+    voiceId: str = Form("Clyde"),
+):
     try:
-        # Accept JSON or FormData
+        # Allow JSON body also
         if text is None:
             data = await request.json()
             text = data.get("text", "")
@@ -31,6 +36,7 @@ async def text_to_speech(request: Request, text: str = Form(None), voiceId: str 
             return JSONResponse({"error": "Text is empty"}, status_code=400)
 
         url = f"{ELEVEN_URL}/text-to-speech/{voiceId}"
+
         payload = {
             "text": text,
             "model_id": "eleven_turbo_v2",
@@ -40,7 +46,10 @@ async def text_to_speech(request: Request, text: str = Form(None), voiceId: str 
         res = requests.post(url, headers=HEADERS_JSON, json=payload)
 
         if res.status_code != 200:
-            return JSONResponse({"error": "TTS failed", "details": res.text}, status_code=500)
+            return JSONResponse(
+                {"error": "TTS failed", "details": res.text},
+                status_code=500,
+            )
 
         return StreamingResponse(iter([res.content]), media_type="audio/mpeg")
 
@@ -49,48 +58,34 @@ async def text_to_speech(request: Request, text: str = Form(None), voiceId: str 
 
 
 # ---------------------------------------------
-# 🔁 2. SPEECH → SPEECH
-# ---------------------------------------------
-@router.post("/speech-to-speech")
-async def speech_to_speech(
-    file: UploadFile = File(...),
-    voiceId: str = Form("Clyde")
-):
-    try:
-        url = f"{ELEVEN_URL}/speech-to-speech/{voiceId}"
-        headers = {"xi-api-key": ELEVENLABS_API_KEY}
-
-        # correct upload format for ElevenLabs
-        files = {
-            "audio": (file.filename, await file.read(), file.content_type or "audio/mpeg"),
-        }
-
-        res = requests.post(url, headers=headers, files=files)
-
-        if res.status_code != 200:
-            return JSONResponse({"error": "Speech2Speech failed", "details": res.text}, status_code=500)
-
-        return StreamingResponse(iter([res.content]), media_type="audio/mpeg")
-
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-# ---------------------------------------------
-# 🎵 3. GET VOICES
+# 🎵 2. GET VOICES (used by both pages)
 # ---------------------------------------------
 @router.get("/voices")
 async def get_voices():
     try:
         url = f"{ELEVEN_URL}/voices"
-        headers = {"xi-api-key": ELEVENLABS_API_KEY}
+        headers = {
+            "xi-api-key": ELEVENLABS_API_KEY,
+            "Accept": "application/json",
+        }
 
         res = requests.get(url, headers=headers)
 
         if res.status_code != 200:
-            return JSONResponse({"error": "Failed to fetch voices"}, status_code=500)
+            return JSONResponse(
+                {"error": "Failed to fetch voices", "details": res.text},
+                status_code=500,
+            )
 
-        return res.json()
+        data = res.json()
+        voices = data.get("voices", [])
+
+        clean = [
+            {"id": v.get("voice_id"), "name": v.get("name")}
+            for v in voices
+        ]
+
+        return {"voices": clean}
 
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
