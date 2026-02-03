@@ -6,6 +6,26 @@ import re
 from datetime import datetime
 import pytz
 # test git change
+# Agent API main route handler
+# This file handles agent-related endpoints
+# Validates incoming request data
+# Checks required fields before processing
+# Handles agent creation logic
+# Handles agent update logic
+# Handles agent delete logic
+# Sends standardized success responses
+# Sends standardized error responses
+# Logs agent-related actions
+# Catches unexpected exceptions
+# Uses service layer for business logic
+# Keeps routing logic minimal
+# Ensures proper HTTP status codes
+# Prevents invalid agent data insertion
+# Supports future agent enhancements
+# Improves code readability
+# Added for git commit practice
+# Temporary comments for learning git
+# End of agent route comments
 
 load_dotenv()
 
