@@ -1,10 +1,17 @@
-# Ignore Python and environment files
+# Environment
+.env
+
+# Python
 __pycache__/
 *.pyc
 *.pyo
-*.pyd
-*.env
-.env
-.env.local
-.venv/
-venv/
+
+# Logs
+*.log
+app.log
+
+# Vector Database
+chroma_db/
+
+# Temporary files
+*.tmp

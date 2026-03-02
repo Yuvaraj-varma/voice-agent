@@ -1,0 +1,34 @@
+import time
+from typing import Optional
+
+from providers.base_provider import BaseLLMProvider
+from utils.gemini_rotator import GeminiKeyRotator
+from utils.logger import logger
+
+
+class GeminiProvider(BaseLLMProvider):
+    def __init__(self, rotator: GeminiKeyRotator):
+        self.rotator = rotator
+        self.model = "gemini-2.5-flash"
+
+    @property
+    def provider_name(self) -> str:
+        return "gemini"
+
+    async def generate(self, prompt: str) -> Optional[str]:
+        try:
+            start = time.perf_counter()
+
+            response = self.rotator.generate_content(
+                model=self.model,
+                contents=prompt,
+            )
+
+            latency = round(time.perf_counter() - start, 3)
+            logger.info(f"Gemini latency={latency}s")
+
+            return response.text.strip() if response.text else None
+
+        except Exception as e:
+            logger.error(f"Gemini error: {e}")
+            return None

@@ -1,88 +1,158 @@
-# backend/routes/voice_transform.py
-
 from fastapi import APIRouter, UploadFile, File, Form
 from fastapi.responses import JSONResponse, StreamingResponse
-from dotenv import load_dotenv
+from pathlib import Path
 import google.generativeai as genai
-import requests, os, tempfile
+import httpx
+import os
+import tempfile
 
-load_dotenv()
+from utils.logger import log_error
 
 router = APIRouter(tags=["Voice Transform"])
 
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 ELEVEN_KEY = os.getenv("ELEVENLABS_API_KEY")
 
-genai.configure(api_key=GEMINI_KEY)
+if GEMINI_KEY:
+    genai.configure(api_key=GEMINI_KEY)
+
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 
 
 # ---------------------------------------------------------
-#  Helper → ElevenLabs (Text → Speech)
+# ElevenLabs TTS
 # ---------------------------------------------------------
-def eleven_tts(text: str, voice_id: str):
+async def eleven_tts(text: str, voice_id: str):
+    if not ELEVEN_KEY or not text:
+        return None
+
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+
+    payload = {
+        "text": text[:5000],
+        "model_id": "eleven_turbo_v2",
+        "voice_settings": {
+            "stability": 0.4,
+            "similarity_boost": 0.8,
+        },
+    }
 
     headers = {
         "xi-api-key": ELEVEN_KEY,
         "Content-Type": "application/json",
     }
 
-    payload = {
-        "text": text,
-        "model_id": "eleven_turbo_v2",
-        "voice_settings": {"stability": 0.4, "similarity_boost": 0.8},
-    }
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            res = await client.post(url, headers=headers, json=payload)
 
-    res = requests.post(url, headers=headers, json=payload)
+        if res.status_code != 200:
+            log_error(Exception(res.text), "Voice Transform TTS")
+            return None
 
-    if res.status_code != 200:
-        print("❌ ElevenLabs error:", res.text)
+        return res.content
+
+    except Exception as e:
+        log_error(e, "Voice Transform ElevenLabs")
         return None
-
-    return res.content  # raw audio bytes
 
 
 # ---------------------------------------------------------
-#  MAIN ROUTE → Speech → Text (Gemini) → Speech (ElevenLabs)
+# VOICE TRANSFORM ENDPOINT
 # ---------------------------------------------------------
 @router.post("/voice-transform")
 async def voice_transform(
     file: UploadFile = File(...),
-    voiceId: str = Form(...)   # ← get voiceId from frontend
+    voiceId: str = Form(...),
 ):
-    try:
-        # Save uploaded audio temporarily
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp:
-            temp.write(await file.read())
-            temp.flush()
-            audio_path = temp.name
+    tmp_path = None
 
-        # --- 1) Gemini Speech-to-Text ---
-        model = genai.GenerativeModel("gemini-2.5-flash")
+    try:
+        if not GEMINI_KEY:
+            return JSONResponse(
+                {"error": "Gemini not configured"},
+                status_code=500,
+            )
+
+        if not file.filename:
+            return JSONResponse(
+                {"error": "Invalid file"},
+                status_code=400,
+            )
+
+        ext = Path(file.filename).suffix.lower()
+        if ext not in {".wav", ".webm", ".mp3"}:
+            return JSONResponse(
+                {"error": "Unsupported audio format"},
+                status_code=400,
+            )
+
+        content = await file.read()
+        if not content:
+            return JSONResponse(
+                {"error": "Empty file"},
+                status_code=400,
+            )
+
+        if len(content) > MAX_FILE_SIZE:
+            return JSONResponse(
+                {"error": "File too large"},
+                status_code=413,
+            )
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as temp:
+            temp.write(content)
+            tmp_path = temp.name
+
+        # -------------------------
+        # Gemini Speech-to-Text
+        # -------------------------
+        model = genai.GenerativeModel("gemini-1.5-flash")
+
+        with open(tmp_path, "rb") as audio_file:
+            audio_data = audio_file.read()
+
         stt_response = model.generate_content(
-            {"mime_type": "audio/wav", "data": open(audio_path, "rb").read()}
+            [
+                "Transcribe this audio accurately. Output ONLY the text:",
+                {
+                    "mime_type": f"audio/{ext.replace('.', '')}",
+                    "data": audio_data,
+                },
+            ]
         )
 
         text = (stt_response.text or "").strip()
-        print("📝 Transcription:", text)
 
         if not text:
-            return JSONResponse({"error": "Could not transcribe audio"}, status_code=400)
-
-        # --- 2) ElevenLabs Text-to-Speech with SELECTED voiceId ---
-        audio_bytes = eleven_tts(text, voiceId)
-
-        if audio_bytes is None:
             return JSONResponse(
-                {"error": "Failed to generate audio from ElevenLabs"},
+                {"error": "Could not transcribe audio"},
+                status_code=400,
+            )
+
+        # -------------------------
+        # ElevenLabs TTS
+        # -------------------------
+        audio_bytes = await eleven_tts(text, voiceId)
+
+        if not audio_bytes:
+            return JSONResponse(
+                {"error": "Failed to generate audio"},
                 status_code=500,
             )
 
         return StreamingResponse(
             iter([audio_bytes]),
-            media_type="audio/mpeg"
+            media_type="audio/mpeg",
         )
 
     except Exception as e:
-        print("❌ Voice Transform error:", e)
-        return JSONResponse({"error": str(e)}, status_code=500)
+        log_error(e, "Voice Transform")
+        return JSONResponse(
+            {"error": "Processing failed"},
+            status_code=500,
+        )
+
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
