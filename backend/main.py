@@ -69,12 +69,16 @@ app.add_middleware(RequestIDMiddleware)
 
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=["localhost", "127.0.0.1", "*.localhost"],
+    allowed_hosts=["*"],  # Allow all hosts for deployment
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "https://*.vercel.app",  # Vercel frontend
+        "https://*.onrender.com",  # Render backend
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
