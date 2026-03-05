@@ -16,41 +16,45 @@ class GeminiKeyRotator:
             raise ValueError("No GEMINI_API_KEY_1 to GEMINI_API_KEY_8 found")
 
         self.current_index = 0
-        self.client = genai.Client(api_key=self.api_keys[self.current_index])
+        genai.configure(api_key=self.api_keys[self.current_index])
 
         logging.info(f"Initialized with {len(self.api_keys)} API keys")
 
     async def generate_content(self, model, contents):
-        """
-        Async Gemini generation with retry + key rotation
-        """
+
         max_attempts = 5
         wait_time = 2
 
         for attempt in range(max_attempts):
             try:
+
                 logging.info(
                     f"Generating content with {model} (attempt {attempt+1}/{max_attempts})"
                 )
 
                 response = await asyncio.to_thread(
-                    self.client.models.generate_content,
-                    model=model,
-                    contents=contents,
+                    genai.GenerativeModel(model).generate_content,
+                    contents,
                 )
 
-                return response
+                return response.text
 
             except Exception as e:
+
                 error_msg = str(e).lower()
 
                 if "quota" in error_msg or "rate" in error_msg or "429" in error_msg:
+
                     logging.warning(
                         f"Rate limit hit. Rotating key and retrying in {wait_time}s"
                     )
+
                     self._rotate_key()
+
                     await asyncio.sleep(wait_time)
+
                     wait_time = min(wait_time * 2, 60)
+
                 else:
                     logging.error(f"Gemini error: {e}")
                     raise
@@ -58,6 +62,9 @@ class GeminiKeyRotator:
         raise Exception("Max retries exceeded for Gemini API")
 
     def _rotate_key(self):
+
         self.current_index = (self.current_index + 1) % len(self.api_keys)
-        self.client = genai.Client(api_key=self.api_keys[self.current_index])
+
+        genai.configure(api_key=self.api_keys[self.current_index])
+
         logging.info(f"Rotated to API key #{self.current_index + 1}")
