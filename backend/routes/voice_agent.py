@@ -54,7 +54,9 @@ class GeminiVoiceAgent(BaseVoiceAgent):
     def __init__(self, http_client: httpx.AsyncClient):
         self.gemini = GeminiKeyRotator()
         self.http = http_client
-        self.elevenlabs_key = os.getenv("ELEVENLABS_API_KEY")
+
+    def get_elevenlabs_key(self):
+        return os.getenv("ELEVENLABS_API_KEY")
 
     async def transcribe(self, audio_path: str) -> str:
         try:
@@ -101,14 +103,15 @@ Answer:
             return "I encountered an error."
 
     async def synthesize_speech(self, text: str, voice_id: str) -> Optional[str]:
-        if not self.elevenlabs_key or not text:
+        elevenlabs_key = self.get_elevenlabs_key()
+        if not elevenlabs_key or not text:
             return None
 
         try:
             res = await self.http.post(
                 f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
                 headers={
-                    "xi-api-key": self.elevenlabs_key,
+                    "xi-api-key": elevenlabs_key,
                     "Content-Type": "application/json",
                 },
                 json={

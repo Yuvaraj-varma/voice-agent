@@ -10,20 +10,21 @@ from utils.logger import log_error
 
 router = APIRouter(tags=["Voice Transform"])
 
-GEMINI_KEY = os.getenv("GEMINI_API_KEY")
-ELEVEN_KEY = os.getenv("ELEVENLABS_API_KEY")
-
-if GEMINI_KEY:
-    genai.configure(api_key=GEMINI_KEY)
-
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+
+def get_gemini_key():
+    return os.getenv("GEMINI_API_KEY")
+
+def get_eleven_key():
+    return os.getenv("ELEVENLABS_API_KEY")
 
 
 # ---------------------------------------------------------
 # ElevenLabs TTS
 # ---------------------------------------------------------
 async def eleven_tts(text: str, voice_id: str):
-    if not ELEVEN_KEY or not text:
+    api_key = get_eleven_key()
+    if not api_key or not text:
         return None
 
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
@@ -38,7 +39,7 @@ async def eleven_tts(text: str, voice_id: str):
     }
 
     headers = {
-        "xi-api-key": ELEVEN_KEY,
+        "xi-api-key": api_key,
         "Content-Type": "application/json",
     }
 
@@ -68,11 +69,14 @@ async def voice_transform(
     tmp_path = None
 
     try:
-        if not GEMINI_KEY:
+        gemini_key = get_gemini_key()
+        if not gemini_key:
             return JSONResponse(
                 {"error": "Gemini not configured"},
                 status_code=500,
             )
+        
+        genai.configure(api_key=gemini_key)
 
         if not file.filename:
             return JSONResponse(

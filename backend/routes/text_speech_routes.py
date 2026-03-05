@@ -7,8 +7,10 @@ from utils.logger import log_error
 
 router = APIRouter()
 
-ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 ELEVEN_URL = "https://api.elevenlabs.io/v1"
+
+def get_api_key():
+    return os.getenv("ELEVENLABS_API_KEY")
 
 
 # ---------------------------------------------
@@ -34,7 +36,8 @@ async def text_to_speech(
         if not text:
             return JSONResponse({"error": "Text is empty"}, status_code=400)
 
-        if not ELEVENLABS_API_KEY:
+        api_key = get_api_key()
+        if not api_key:
             return JSONResponse(
                 {"error": "ELEVENLABS_API_KEY missing"},
                 status_code=500,
@@ -52,7 +55,7 @@ async def text_to_speech(
         }
 
         headers = {
-            "xi-api-key": ELEVENLABS_API_KEY,
+            "xi-api-key": api_key,
             "Content-Type": "application/json",
         }
 
@@ -82,7 +85,8 @@ async def text_to_speech(
 @router.get("/voices")
 async def get_voices():
     try:
-        if not ELEVENLABS_API_KEY:
+        api_key = get_api_key()
+        if not api_key:
             return JSONResponse(
                 {"error": "API key not configured"},
                 status_code=500,
@@ -90,7 +94,7 @@ async def get_voices():
 
         url = f"{ELEVEN_URL}/voices"
         headers = {
-            "xi-api-key": ELEVENLABS_API_KEY,
+            "xi-api-key": api_key,
             "Accept": "application/json",
         }
 
