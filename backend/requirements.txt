@@ -9,18 +9,14 @@ slowapi==0.1.9
 # AI
 google-generativeai==0.8.6
 
-# Embeddings
-torch==2.5.1
-sentence-transformers==2.7.0
+# Vector DB (lightweight version)
+chromadb==0.5.23
 
-# Vector Database
-chromadb==1.4.1
+# LangChain (minimal)
+langchain-core
+langchain-community
+langchain-chroma
+langchain-huggingface
 
-# LangChain (compatible versions)
-langchain-core==0.3.56
-langchain-community==0.3.23
-langchain-chroma==0.1.4
-langchain-huggingface==0.1.2
-
-# Core dependency
+# Core
 numpy>=1.24.0,<2.0.0

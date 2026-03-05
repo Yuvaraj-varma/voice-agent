@@ -5,7 +5,6 @@ import httpx
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
 
@@ -25,7 +24,6 @@ class RAGService:
     def __init__(self):
         self.http_client: Optional[httpx.AsyncClient] = None
         self.vectorstore: Optional[Chroma] = None
-        self.embeddings = None
         self.providers = []
         self.cache = {}
         self.max_chunks = 3
@@ -39,20 +37,12 @@ class RAGService:
 
         self.http_client = httpx.AsyncClient(timeout=30.0)
 
-        # embeddings
-        self.embeddings = HuggingFaceEmbeddings(
-            model_name="sentence-transformers/all-MiniLM-L6-v2",
-            model_kwargs={"device": "cpu"},
-            encode_kwargs={"normalize_embeddings": True},
-        )
-
-        # vector DB
+        # vector DB - load existing embeddings only
         persist_path = str(Path(os.getenv("CHROMA_PATH", "chroma_db")).resolve())
         logger.info(f"Loading Chroma DB from: {persist_path}")
 
         self.vectorstore = Chroma(
-            persist_directory=persist_path,
-            embedding_function=self.embeddings,
+            persist_directory=persist_path
         )
 
         gemini_rotator = GeminiKeyRotator()
