@@ -19,7 +19,7 @@ class GeminiProvider(BaseLLMProvider):
         try:
             start = time.perf_counter()
 
-            response = self.rotator.generate_content(
+            response = await self.rotator.generate_content(
                 model=self.model,
                 contents=prompt,
             )
@@ -27,7 +27,7 @@ class GeminiProvider(BaseLLMProvider):
             latency = round(time.perf_counter() - start, 3)
             logger.info(f"Gemini latency={latency}s")
 
-            return response.text.strip() if response.text else None
+            return response.strip() if response else None
 
         except Exception as e:
             logger.error(f"Gemini error: {e}")

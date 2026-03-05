@@ -41,9 +41,18 @@ class RAGService:
         persist_path = str(Path(os.getenv("CHROMA_PATH", "chroma_db")).resolve())
         logger.info(f"Loading Chroma DB from: {persist_path}")
 
-        self.vectorstore = Chroma(
-            persist_directory=persist_path
-        )
+        try:
+            if Path(persist_path).exists():
+                self.vectorstore = Chroma(
+                    persist_directory=persist_path
+                )
+                logger.info("Chroma DB loaded successfully")
+            else:
+                logger.warning(f"Chroma DB path not found: {persist_path}")
+                self.vectorstore = None
+        except Exception as e:
+            logger.error(f"Failed to load Chroma DB: {e}")
+            self.vectorstore = None
 
         gemini_rotator = GeminiKeyRotator()
 
