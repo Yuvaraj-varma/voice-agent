@@ -10,8 +10,5 @@ __pycache__/
 *.log
 app.log
 
-# Vector Database
-chroma_db/
-
 # Temporary files
 *.tmp
