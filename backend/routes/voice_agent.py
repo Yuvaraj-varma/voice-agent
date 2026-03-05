@@ -68,7 +68,7 @@ class GeminiVoiceAgent(BaseVoiceAgent):
 
             audio_b64 = base64.b64encode(audio).decode()
 
-            response = self.gemini.generate_content(
+            response = await self.gemini.generate_content(
                 model="gemini-1.5-flash",
                 contents=[
                     "Transcribe this audio accurately. Output ONLY the text:",
@@ -76,7 +76,7 @@ class GeminiVoiceAgent(BaseVoiceAgent):
                 ],
             )
 
-            return response.text.strip() if response.text else ""
+            return response.strip() if response else ""
 
         except Exception as e:
             logger.error(f"Transcription error: {e}")
@@ -91,12 +91,12 @@ Answer briefly and clearly.
 Question: {text}
 Answer:
 """
-            response = self.gemini.generate_content(
+            response = await self.gemini.generate_content(
                 model="gemini-1.5-flash",
                 contents=prompt,
             )
 
-            return response.text.strip() if response.text else "I couldn't process that."
+            return response.strip() if response else "I couldn't process that."
 
         except Exception as e:
             logger.error(f"Response generation error: {e}")
