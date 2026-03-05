@@ -1,7 +1,7 @@
 import os
 import asyncio
 import logging
-from google import genai
+import google.generativeai as genai
 
 
 class GeminiKeyRotator:
