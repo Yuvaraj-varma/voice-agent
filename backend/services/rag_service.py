@@ -111,13 +111,19 @@ class RAGService:
             # Create ChromaDB client
             client = chromadb.PersistentClient(path=persist_path)
             
-            # Create or get collection with ONNX embeddings
-            collection = client.get_or_create_collection(
+            # Delete existing collection if any
+            try:
+                client.delete_collection(name="langchain")
+            except:
+                pass
+            
+            # Create collection with ONNX embeddings
+            collection = client.create_collection(
                 name="langchain",
                 embedding_function=self.embeddings
             )
             
-            # Add documents to collection
+            # Add documents to collection (no embedding_function param here!)
             texts = [doc.page_content for doc in splits]
             metadatas = [doc.metadata for doc in splits]
             ids = [f"doc_{i}" for i in range(len(splits))]
@@ -142,6 +148,8 @@ class RAGService:
             
         except Exception as e:
             logger.error(f"Failed to build vector store: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return None
 
     async def shutdown(self):
