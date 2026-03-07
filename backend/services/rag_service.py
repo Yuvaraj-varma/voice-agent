@@ -2,14 +2,15 @@ import os
 import base64
 import time
 import httpx
+import shutil
 from pathlib import Path
 from typing import List, Optional, Tuple
 
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.document_loaders import PyPDFDirectoryLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2
 
 from utils.gemini_rotator import GeminiKeyRotator
 from utils.logger import logger
@@ -41,11 +42,9 @@ class RAGService:
 
         self.http_client = httpx.AsyncClient(timeout=30.0)
 
-        # Initialize embeddings
-        logger.info("Loading HuggingFace embeddings...")
-        self.embeddings = HuggingFaceEmbeddings(
-            model_name="sentence-transformers/all-MiniLM-L6-v2"
-        )
+        # Initialize lightweight ONNX embeddings (no PyTorch!)
+        logger.info("Loading ONNX embeddings (lightweight)...")
+        self.embeddings = ONNXMiniLM_L6_V2()
 
         # Load or build vector DB
         persist_path = str(Path(os.getenv("CHROMA_PATH", "chroma_db")).resolve())
@@ -57,12 +56,15 @@ class RAGService:
                     persist_directory=persist_path,
                     embedding_function=self.embeddings
                 )
+                # Test if it works
+                self.vectorstore.similarity_search("test", k=1)
                 logger.info("Chroma DB loaded successfully")
             else:
-                logger.warning(f"Chroma DB not found, building from PDFs...")
-                self.vectorstore = await self._build_vectorstore()
+                raise Exception("Path not found")
         except Exception as e:
             logger.error(f"Failed to load Chroma DB: {e}. Rebuilding...")
+            # Delete corrupted DB
+            shutil.rmtree(persist_path, ignore_errors=True)
             self.vectorstore = await self._build_vectorstore()
 
         gemini_rotator = GeminiKeyRotator()
@@ -106,7 +108,7 @@ class RAGService:
             persist_path = str(Path(os.getenv("CHROMA_PATH", "chroma_db")).resolve())
             vectorstore = Chroma.from_documents(
                 documents=splits,
-                embedding=self.embeddings,
+                embedding_function=self.embeddings,
                 persist_directory=persist_path
             )
             
