@@ -3,6 +3,7 @@ import base64
 import time
 import httpx
 import shutil
+import chromadb
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -77,7 +78,7 @@ class RAGService:
         logger.info("RAG service initialized successfully")
 
     async def _build_vectorstore(self) -> Optional[Chroma]:
-        """Build vector store from PDF documents"""
+        """Build vector store from PDF documents using ChromaDB directly"""
         try:
             pdf_path = os.getenv("PDF_PATH", "data/ds_notes")
             pdf_dir = Path(pdf_path).resolve()
@@ -104,12 +105,36 @@ class RAGService:
             splits = text_splitter.split_documents(documents)
             logger.info(f"Split into {len(splits)} chunks")
 
-            # Create vector store
+            # Use ChromaDB directly with ONNX embeddings
             persist_path = str(Path(os.getenv("CHROMA_PATH", "chroma_db")).resolve())
-            vectorstore = Chroma.from_documents(
-                documents=splits,
-                embedding_function=self.embeddings,
-                persist_directory=persist_path
+            
+            # Create ChromaDB client
+            client = chromadb.PersistentClient(path=persist_path)
+            
+            # Create or get collection with ONNX embeddings
+            collection = client.get_or_create_collection(
+                name="langchain",
+                embedding_function=self.embeddings
+            )
+            
+            # Add documents to collection
+            texts = [doc.page_content for doc in splits]
+            metadatas = [doc.metadata for doc in splits]
+            ids = [f"doc_{i}" for i in range(len(splits))]
+            
+            collection.add(
+                documents=texts,
+                metadatas=metadatas,
+                ids=ids
+            )
+            
+            logger.info(f"Added {len(splits)} chunks to ChromaDB")
+            
+            # Wrap with LangChain Chroma for similarity_search
+            vectorstore = Chroma(
+                client=client,
+                collection_name="langchain",
+                embedding_function=self.embeddings
             )
             
             logger.info(f"Vector store built and saved to: {persist_path}")
