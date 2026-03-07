@@ -66,9 +66,17 @@ class RAGService:
                 raise Exception("Path not found")
         except Exception as e:
             logger.error(f"Failed to load Chroma DB: {e}. Rebuilding...")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
             # Delete corrupted DB
             shutil.rmtree(persist_path, ignore_errors=True)
             self.vectorstore = await self._build_vectorstore()
+            
+        # FIX PROBLEM 1: Check if vectorstore was built successfully
+        if not self.vectorstore:
+            logger.error("CRITICAL: Vector store failed to build. RAG will not work!")
+        else:
+            logger.info("Vector store ready")
 
         gemini_rotator = GeminiKeyRotator()
 
@@ -217,24 +225,30 @@ Answer:
         return result
 
     # --------------------------------------------------
-    # TTS
+    # TTS - FIX PROBLEM 3: Use gTTS (free, works on server IPs)
     # --------------------------------------------------
     async def synthesize_speech(
-        self, text: str, voice_id: str
+        self, text: str, voice_id: str = None
     ) -> Optional[str]:
-        if not self.elevenlabs_key or not text:
+        try:
+            from gtts import gTTS
+            import io
+            
+            if not text:
+                return None
+            
+            # Generate speech with gTTS
+            tts = gTTS(text=text[:5000], lang='en', slow=False)
+            
+            # Save to bytes buffer
+            audio_buffer = io.BytesIO()
+            tts.write_to_fp(audio_buffer)
+            audio_buffer.seek(0)
+            
+            # Return base64 encoded audio
+            audio_data = audio_buffer.read()
+            return f"data:audio/mpeg;base64,{base64.b64encode(audio_data).decode()}"
+            
+        except Exception as e:
+            logger.error(f"TTS error: {e}")
             return None
-
-        res = await self.http_client.post(
-            f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
-            headers={
-                "xi-api-key": self.elevenlabs_key,
-                "Content-Type": "application/json",
-            },
-            json={"text": text[:5000], "model_id": "eleven_turbo_v2"},
-        )
-
-        if res.status_code == 200:
-            return f"data:audio/mpeg;base64,{base64.b64encode(res.content).decode()}"
-
-        return None

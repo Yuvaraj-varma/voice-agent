@@ -9,7 +9,8 @@ from utils.logger import logger
 class GeminiProvider(BaseLLMProvider):
     def __init__(self, rotator: GeminiKeyRotator):
         self.rotator = rotator
-        self.model = "gemini-2.5-flash"
+        # FIX PROBLEM 2: Use gemini-1.5-flash-8b (higher free tier limits)
+        self.model = "gemini-1.5-flash-8b"
 
     @property
     def provider_name(self) -> str:

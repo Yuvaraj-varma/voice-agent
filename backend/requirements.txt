@@ -23,5 +23,8 @@ langchain-google-genai
 # PDF
 pypdf
 
+# TTS (FIX PROBLEM 3: gTTS instead of ElevenLabs)
+gTTS
+
 # Core
 numpy>=1.24.0,<2.0.0
