@@ -18,6 +18,11 @@ langchain-core
 langchain-community
 langchain-chroma
 langchain-huggingface
+langchain-text-splitters
+
+# Embeddings & PDF
+sentence-transformers
+pypdf
 
 # Core
 numpy>=1.24.0,<2.0.0

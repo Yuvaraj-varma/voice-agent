@@ -7,6 +7,9 @@ from typing import List, Optional, Tuple
 
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.document_loaders import PyPDFDirectoryLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from utils.gemini_rotator import GeminiKeyRotator
 from utils.logger import logger
@@ -24,6 +27,7 @@ class RAGService:
     def __init__(self):
         self.http_client: Optional[httpx.AsyncClient] = None
         self.vectorstore: Optional[Chroma] = None
+        self.embeddings = None
         self.providers = []
         self.cache = {}
         self.max_chunks = 3
@@ -37,22 +41,29 @@ class RAGService:
 
         self.http_client = httpx.AsyncClient(timeout=30.0)
 
-        # vector DB - load existing embeddings only
+        # Initialize embeddings
+        logger.info("Loading HuggingFace embeddings...")
+        self.embeddings = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/all-MiniLM-L6-v2"
+        )
+
+        # Load or build vector DB
         persist_path = str(Path(os.getenv("CHROMA_PATH", "chroma_db")).resolve())
         logger.info(f"Loading Chroma DB from: {persist_path}")
 
         try:
             if Path(persist_path).exists():
                 self.vectorstore = Chroma(
-                    persist_directory=persist_path
+                    persist_directory=persist_path,
+                    embedding_function=self.embeddings
                 )
                 logger.info("Chroma DB loaded successfully")
             else:
-                logger.warning(f"Chroma DB path not found: {persist_path}")
-                self.vectorstore = None
+                logger.warning(f"Chroma DB not found, building from PDFs...")
+                self.vectorstore = await self._build_vectorstore()
         except Exception as e:
-            logger.error(f"Failed to load Chroma DB: {e}")
-            self.vectorstore = None
+            logger.error(f"Failed to load Chroma DB: {e}. Rebuilding...")
+            self.vectorstore = await self._build_vectorstore()
 
         gemini_rotator = GeminiKeyRotator()
 
@@ -62,6 +73,49 @@ class RAGService:
         ]
 
         logger.info("RAG service initialized successfully")
+
+    async def _build_vectorstore(self) -> Optional[Chroma]:
+        """Build vector store from PDF documents"""
+        try:
+            pdf_path = os.getenv("PDF_PATH", "data/ds_notes")
+            pdf_dir = Path(pdf_path).resolve()
+            
+            if not pdf_dir.exists():
+                logger.error(f"PDF directory not found: {pdf_dir}")
+                return None
+
+            logger.info(f"Loading PDFs from: {pdf_dir}")
+            loader = PyPDFDirectoryLoader(str(pdf_dir))
+            documents = loader.load()
+            
+            if not documents:
+                logger.error("No PDF documents found")
+                return None
+
+            logger.info(f"Loaded {len(documents)} pages from PDFs")
+            
+            # Split documents
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=1000,
+                chunk_overlap=200
+            )
+            splits = text_splitter.split_documents(documents)
+            logger.info(f"Split into {len(splits)} chunks")
+
+            # Create vector store
+            persist_path = str(Path(os.getenv("CHROMA_PATH", "chroma_db")).resolve())
+            vectorstore = Chroma.from_documents(
+                documents=splits,
+                embedding=self.embeddings,
+                persist_directory=persist_path
+            )
+            
+            logger.info(f"Vector store built and saved to: {persist_path}")
+            return vectorstore
+            
+        except Exception as e:
+            logger.error(f"Failed to build vector store: {e}")
+            return None
 
     async def shutdown(self):
         if self.http_client:
