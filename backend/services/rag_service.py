@@ -3,7 +3,6 @@ import base64
 import time
 import httpx
 import shutil
-import chromadb
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -11,7 +10,7 @@ from langchain_chroma import Chroma
 from langchain_core.documents import Document
 from langchain_community.document_loaders import PyPDFDirectoryLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 from utils.gemini_rotator import GeminiKeyRotator
 from utils.logger import logger
@@ -43,9 +42,12 @@ class RAGService:
 
         self.http_client = httpx.AsyncClient(timeout=30.0)
 
-        # Initialize lightweight ONNX embeddings (no PyTorch!)
-        logger.info("Loading ONNX embeddings (lightweight)...")
-        self.embeddings = ONNXMiniLM_L6_V2()
+        # Initialize Gemini embeddings (API-based, zero RAM!)
+        logger.info("Loading Gemini embeddings (API-based)...")
+        self.embeddings = GoogleGenerativeAIEmbeddings(
+            model="models/embedding-001",
+            google_api_key=os.getenv("GEMINI_API_KEY")
+        )
 
         # Load or build vector DB
         persist_path = str(Path(os.getenv("CHROMA_PATH", "chroma_db")).resolve())
@@ -78,7 +80,7 @@ class RAGService:
         logger.info("RAG service initialized successfully")
 
     async def _build_vectorstore(self) -> Optional[Chroma]:
-        """Build vector store from PDF documents using ChromaDB directly"""
+        """Build vector store from PDF documents using Gemini embeddings"""
         try:
             pdf_path = os.getenv("PDF_PATH", "data/ds_notes")
             pdf_dir = Path(pdf_path).resolve()
@@ -105,42 +107,13 @@ class RAGService:
             splits = text_splitter.split_documents(documents)
             logger.info(f"Split into {len(splits)} chunks")
 
-            # Use ChromaDB directly with ONNX embeddings
+            # Create vector store with Gemini embeddings
             persist_path = str(Path(os.getenv("CHROMA_PATH", "chroma_db")).resolve())
             
-            # Create ChromaDB client
-            client = chromadb.PersistentClient(path=persist_path)
-            
-            # Delete existing collection if any
-            try:
-                client.delete_collection(name="langchain")
-            except:
-                pass
-            
-            # Create collection with ONNX embeddings
-            collection = client.create_collection(
-                name="langchain",
-                embedding_function=self.embeddings
-            )
-            
-            # Add documents to collection (no embedding_function param here!)
-            texts = [doc.page_content for doc in splits]
-            metadatas = [doc.metadata for doc in splits]
-            ids = [f"doc_{i}" for i in range(len(splits))]
-            
-            collection.add(
-                documents=texts,
-                metadatas=metadatas,
-                ids=ids
-            )
-            
-            logger.info(f"Added {len(splits)} chunks to ChromaDB")
-            
-            # Wrap with LangChain Chroma for similarity_search
-            vectorstore = Chroma(
-                client=client,
-                collection_name="langchain",
-                embedding_function=self.embeddings
+            vectorstore = Chroma.from_documents(
+                documents=splits,
+                embedding=self.embeddings,
+                persist_directory=persist_path
             )
             
             logger.info(f"Vector store built and saved to: {persist_path}")

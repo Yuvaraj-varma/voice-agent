@@ -10,16 +10,17 @@ python-multipart==0.0.9
 # AI
 google-generativeai==0.8.6
 
-# Vector DB (has ONNX embeddings built-in)
+# Vector DB (lightweight)
 chromadb==0.5.23
 
-# LangChain (minimal - removed langchain-huggingface)
+# LangChain
 langchain-core
 langchain-community
 langchain-chroma
 langchain-text-splitters
+langchain-google-genai
 
-# PDF only (removed sentence-transformers)
+# PDF
 pypdf
 
 # Core
