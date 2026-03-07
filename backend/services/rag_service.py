@@ -45,7 +45,7 @@ class RAGService:
         # Initialize Gemini embeddings (API-based, zero RAM!)
         logger.info("Loading Gemini embeddings (API-based)...")
         self.embeddings = GoogleGenerativeAIEmbeddings(
-            model="models/text-embedding-004",
+            model="text-embedding-004",
             google_api_key=os.getenv("GEMINI_API_KEY")
         )
 
