@@ -15,3 +15,12 @@ app.log
 
 # Vector DB (generated at runtime)
 chroma_db/
+
+# Data files (PDFs uploaded to Pinecone)
+data/
+
+# Upload script (local only)
+upload_to_pinecone.py
+
+# Documentation
+*.md

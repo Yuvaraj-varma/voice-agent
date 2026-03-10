@@ -16,11 +16,12 @@ def get_api_key():
 # ---------------------------------------------
 # 🔊 TEXT → SPEECH
 # ---------------------------------------------
+# Fix default voiceId to use valid ElevenLabs voice
 @router.post("/speech")
 async def text_to_speech(
     request: Request,
     text: str = Form(None),
-    voiceId: str = Form("Clyde"),
+    voiceId: str = Form("EXAVITQu4vr4xnSDxMaL"),  # Use Sarah voice by default
 ):
     try:
         # Allow JSON body OR form-data
@@ -28,7 +29,7 @@ async def text_to_speech(
             try:
                 data = await request.json()
                 text = data.get("text", "").strip()
-                voiceId = data.get("voiceId", "Clyde")
+                voiceId = data.get("voiceId", "EXAVITQu4vr4xnSDxMaL")
             except Exception as e:
                 log_error(e, "JSON parsing")
                 return JSONResponse({"error": "Invalid JSON body"}, status_code=400)

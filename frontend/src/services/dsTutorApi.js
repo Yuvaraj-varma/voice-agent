@@ -13,11 +13,18 @@ export async function uploadPDF(file) {
   return res.json();
 }
 
-export async function askDSTutor(question, voiceId) {
-  const res = await fetch(`${BACKEND}/ds-rag-voice`, {
+export async function askDSTutor(question, voiceId, includeAudio = false) {
+  const payload = { question };
+  
+  if (includeAudio && voiceId) {
+    payload.includeAudio = true;
+    payload.voiceId = voiceId;
+  }
+  
+  const res = await fetch(`${BACKEND}/ds-rag-agent`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question, voiceId }),
+    body: JSON.stringify(payload),
   });
 
   if (!res.ok) throw new Error("Request failed");

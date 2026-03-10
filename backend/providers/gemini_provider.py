@@ -1,16 +1,16 @@
+import os
 import time
 from typing import Optional
+import google.generativeai as genai
 
 from providers.base_provider import BaseLLMProvider
-from utils.gemini_rotator import GeminiKeyRotator
 from utils.logger import logger
 
 
 class GeminiProvider(BaseLLMProvider):
-    def __init__(self, rotator: GeminiKeyRotator):
-        self.rotator = rotator
-        # FIX PROBLEM 2: Use gemini-1.5-flash-8b (higher free tier limits)
-        self.model = "gemini-1.5-flash-8b"
+    def __init__(self, api_key: str):
+        genai.configure(api_key=api_key)
+        self.model = "gemini-2.5-flash"
 
     @property
     def provider_name(self) -> str:
@@ -20,15 +20,13 @@ class GeminiProvider(BaseLLMProvider):
         try:
             start = time.perf_counter()
 
-            response = await self.rotator.generate_content(
-                model=self.model,
-                contents=prompt,
-            )
+            model = genai.GenerativeModel(self.model)
+            response = model.generate_content(prompt)
 
             latency = round(time.perf_counter() - start, 3)
             logger.info(f"Gemini latency={latency}s")
 
-            return response.strip() if response else None
+            return response.text.strip() if response.text else None
 
         except Exception as e:
             logger.error(f"Gemini error: {e}")

@@ -7,8 +7,8 @@ import os
 from abc import ABC, abstractmethod
 from typing import Optional
 from pathlib import Path
+import google.generativeai as genai
 
-from utils.gemini_rotator import GeminiKeyRotator
 from utils.logger import logger
 
 router = APIRouter(tags=["Voice Agent"])
@@ -52,7 +52,10 @@ class BaseVoiceAgent(ABC):
 
 class GeminiVoiceAgent(BaseVoiceAgent):
     def __init__(self, http_client: httpx.AsyncClient):
-        self.gemini = GeminiKeyRotator()
+        # Use dedicated Voice Agent Gemini key
+        voice_agent_key = os.getenv("VOICE_AGENT_GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
+        if voice_agent_key:
+            genai.configure(api_key=voice_agent_key)
         self.http = http_client
 
     def get_elevenlabs_key(self):
@@ -68,15 +71,13 @@ class GeminiVoiceAgent(BaseVoiceAgent):
 
             audio_b64 = base64.b64encode(audio).decode()
 
-            response = await self.gemini.generate_content(
-                model="gemini-1.5-flash",
-                contents=[
-                    "Transcribe this audio accurately. Output ONLY the text:",
-                    {"mime_type": "audio/webm", "data": audio_b64},
-                ],
-            )
+            model = genai.GenerativeModel("gemini-2.5-flash")
+            response = model.generate_content([
+                "Transcribe this audio accurately. Output ONLY the text:",
+                {"mime_type": "audio/webm", "data": audio_b64},
+            ])
 
-            return response.strip() if response else ""
+            return response.text.strip() if response.text else ""
 
         except Exception as e:
             logger.error(f"Transcription error: {e}")
@@ -91,12 +92,10 @@ Answer briefly and clearly.
 Question: {text}
 Answer:
 """
-            response = await self.gemini.generate_content(
-                model="gemini-1.5-flash",
-                contents=prompt,
-            )
+            model = genai.GenerativeModel("gemini-2.5-flash")
+            response = model.generate_content(prompt)
 
-            return response.strip() if response else "I couldn't process that."
+            return response.text.strip() if response.text else "I couldn't process that."
 
         except Exception as e:
             logger.error(f"Response generation error: {e}")

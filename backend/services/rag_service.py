@@ -2,15 +2,9 @@ import os
 import base64
 import time
 import httpx
-import shutil
-from pathlib import Path
 from typing import List, Optional, Tuple
-
-from langchain_chroma import Chroma
-from langchain_core.documents import Document
-from langchain_community.document_loaders import PyPDFDirectoryLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from pinecone import Pinecone, ServerlessSpec
+import google.generativeai as genai
 
 from utils.gemini_rotator import GeminiKeyRotator
 from utils.logger import logger
@@ -27,111 +21,55 @@ class RAGService:
 
     def __init__(self):
         self.http_client: Optional[httpx.AsyncClient] = None
-        self.vectorstore: Optional[Chroma] = None
+        self.pc_index = None
         self.embeddings = None
         self.providers = []
         self.cache = {}
-        self.max_chunks = 3
-        self.elevenlabs_key = os.getenv("ELEVENLABS_API_KEY")
+        self.max_chunks = 5
 
     # --------------------------------------------------
     # LIFECYCLE
     # --------------------------------------------------
     async def startup(self):
-        logger.info("Initializing RAG service")
+        logger.info("Initializing RAG service (Pinecone)")
 
         self.http_client = httpx.AsyncClient(timeout=30.0)
 
-        # Initialize Gemini embeddings (API-based, zero RAM!)
-        logger.info("Loading Gemini embeddings (API-based)...")
-        self.embeddings = GoogleGenerativeAIEmbeddings(
-            model="text-embedding-004",
-            google_api_key=os.getenv("GEMINI_API_KEY")
-        )
+        # Load embedding model once at startup
+        from sentence_transformers import SentenceTransformer
+        logger.info("Loading HuggingFace embedding model...")
+        self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+        logger.info("Embedding model loaded")
 
-        # Load or build vector DB
-        persist_path = str(Path(os.getenv("CHROMA_PATH", "chroma_db")).resolve())
-        logger.info(f"Loading Chroma DB from: {persist_path}")
+        # Simple embeddings for free tier
+        rag_gemini_key = os.getenv("RAG_GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
+        genai.configure(api_key=rag_gemini_key)
 
-        try:
-            if Path(persist_path).exists():
-                self.vectorstore = Chroma(
-                    persist_directory=persist_path,
-                    embedding_function=self.embeddings
-                )
-                # Test if it works
-                self.vectorstore.similarity_search("test", k=1)
-                logger.info("Chroma DB loaded successfully")
-            else:
-                raise Exception("Path not found")
-        except Exception as e:
-            logger.error(f"Failed to load Chroma DB: {e}. Rebuilding...")
-            import traceback
-            logger.error(f"Full traceback: {traceback.format_exc()}")
-            # Delete corrupted DB
-            shutil.rmtree(persist_path, ignore_errors=True)
-            self.vectorstore = await self._build_vectorstore()
-            
-        # FIX PROBLEM 1: Check if vectorstore was built successfully
-        if not self.vectorstore:
-            logger.error("CRITICAL: Vector store failed to build. RAG will not work!")
+        # Pinecone cloud vector DB (no disk storage needed)
+        pc_api_key = os.getenv("PINECONE_API_KEY")
+        if pc_api_key:
+            try:
+                pc = Pinecone(api_key=pc_api_key)
+                index_name = "ds-tutor"
+                
+                # Check if index exists
+                if index_name not in pc.list_indexes().names():
+                    logger.warning(f"Pinecone index '{index_name}' not found. Create it manually.")
+                else:
+                    self.pc_index = pc.Index(index_name)
+                    logger.info("Pinecone connected successfully")
+            except Exception as e:
+                logger.error(f"Pinecone init failed: {e}")
         else:
-            logger.info("Vector store ready")
-
-        gemini_rotator = GeminiKeyRotator()
+            logger.warning("PINECONE_API_KEY not set. RAG disabled.")
 
         self.providers = [
-            GeminiProvider(gemini_rotator),
-            DeepSeekProvider(self.http_client),
+            GeminiProvider(rag_gemini_key),
         ]
 
-        logger.info("RAG service initialized successfully")
+        logger.info("RAG service initialized")
 
-    async def _build_vectorstore(self) -> Optional[Chroma]:
-        """Build vector store from PDF documents using Gemini embeddings"""
-        try:
-            pdf_path = os.getenv("PDF_PATH", "data/ds_notes")
-            pdf_dir = Path(pdf_path).resolve()
-            
-            if not pdf_dir.exists():
-                logger.error(f"PDF directory not found: {pdf_dir}")
-                return None
 
-            logger.info(f"Loading PDFs from: {pdf_dir}")
-            loader = PyPDFDirectoryLoader(str(pdf_dir))
-            documents = loader.load()
-            
-            if not documents:
-                logger.error("No PDF documents found")
-                return None
-
-            logger.info(f"Loaded {len(documents)} pages from PDFs")
-            
-            # Split documents
-            text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=1000,
-                chunk_overlap=200
-            )
-            splits = text_splitter.split_documents(documents)
-            logger.info(f"Split into {len(splits)} chunks")
-
-            # Create vector store with Gemini embeddings
-            persist_path = str(Path(os.getenv("CHROMA_PATH", "chroma_db")).resolve())
-            
-            vectorstore = Chroma.from_documents(
-                documents=splits,
-                embedding=self.embeddings,
-                persist_directory=persist_path
-            )
-            
-            logger.info(f"Vector store built and saved to: {persist_path}")
-            return vectorstore
-            
-        except Exception as e:
-            logger.error(f"Failed to build vector store: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
-            return None
 
     async def shutdown(self):
         if self.http_client:
@@ -142,34 +80,46 @@ class RAGService:
     # HEALTH CHECK
     # --------------------------------------------------
     def health_check(self) -> bool:
-        try:
-            if not self.vectorstore:
-                return False
-            self.vectorstore.similarity_search("health check", k=1)
-            return True
-        except Exception as e:
-            logger.error(f"Vector DB health check failed: {e}")
-            return False
+        return self.pc_index is not None
 
     # --------------------------------------------------
     # RETRIEVAL
     # --------------------------------------------------
     async def retrieve_context(
         self, question: str
-    ) -> Tuple[List[Document], str]:
-        if not self.vectorstore:
-            raise RuntimeError("RAGService not initialized. Call startup() first.")
+    ) -> Tuple[List[dict], str]:
+        if not self.pc_index:
+            return [], ""
 
-        docs = self.vectorstore.similarity_search(question, k=self.max_chunks)
-        logger.info(f"Retrieved {len(docs)} documents from Chroma")
+        try:
+            # Use pre-loaded model
+            embedding = self.embedding_model.encode(question).tolist()
+            
+            results = self.pc_index.query(
+                vector=embedding,
+                top_k=self.max_chunks,
+                include_metadata=True
+            )
+            
+            docs = []
+            for match in results.matches:
+                docs.append({
+                    "content": match.metadata.get("text", ""),
+                    "page": match.metadata.get("page", 0)
+                })
+            
+            context = "\n\n".join([d["content"] for d in docs])
+            logger.info(f"Retrieved {len(docs)} docs from Pinecone")
+            return docs, context
+            
+        except Exception as e:
+            logger.error(f"Retrieval error: {e}")
+            return [], ""
 
-        context = "\n\n".join([d.page_content for d in docs]) if docs else ""
-        return docs, context
-
-    def extract_sources(self, docs: List[Document]) -> List[str]:
+    def extract_sources(self, docs: List[dict]) -> List[str]:
         sources = []
         for d in docs:
-            page = d.metadata.get("page")
+            page = d.get("page")
             if isinstance(page, int):
                 sources.append(f"Page {page + 1}")
         return list(set(sources))
@@ -184,13 +134,22 @@ class RAGService:
             return "This topic is not covered in the material.", "none"
 
         prompt = f"""
-Answer ONLY from the material.
+You are a Data Science tutor helping students prepare for exams.
+
+Using ONLY the material below, provide a comprehensive explanation that includes:
+1. Clear definition
+2. Key concepts and types
+3. Important examples
+4. Why it matters in Data Science
+
+Write in a way that helps students understand deeply for their exams.
 
 Material:
 {context}
 
 Question: {question}
-Answer:
+
+Detailed Answer:
 """
 
         for provider in self.providers:

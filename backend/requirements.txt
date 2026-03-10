@@ -8,23 +8,16 @@ slowapi==0.1.9
 python-multipart==0.0.9
 
 # AI
-google-generativeai==0.8.6
+google-generativeai
 
-# Vector DB (lightweight)
-chromadb==0.5.23
+# Vector DB (cloud-based, zero disk storage)
+pinecone-client==5.0.0
 
-# LangChain
-langchain-core
-langchain-community
-langchain-chroma
-langchain-text-splitters
+# LangChain (minimal)
 langchain-google-genai
 
-# PDF
-pypdf
-
-# TTS (FIX PROBLEM 3: gTTS instead of ElevenLabs)
+# TTS (free, no API limits)
 gTTS
 
 # Core
-numpy>=1.24.0,<2.0.0
+sentence-transformers

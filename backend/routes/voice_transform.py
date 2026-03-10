@@ -13,7 +13,7 @@ router = APIRouter(tags=["Voice Transform"])
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 
 def get_gemini_key():
-    return os.getenv("GEMINI_API_KEY")
+    return os.getenv("SPEECH_GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
 
 def get_eleven_key():
     return os.getenv("ELEVENLABS_API_KEY")
@@ -111,17 +111,20 @@ async def voice_transform(
         # -------------------------
         # Gemini Speech-to-Text
         # -------------------------
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.5-flash")
 
         with open(tmp_path, "rb") as audio_file:
             audio_data = audio_file.read()
+
+        import base64
+        audio_b64 = base64.b64encode(audio_data).decode()
 
         stt_response = model.generate_content(
             [
                 "Transcribe this audio accurately. Output ONLY the text:",
                 {
-                    "mime_type": f"audio/{ext.replace('.', '')}",
-                    "data": audio_data,
+                    "mime_type": "audio/webm",
+                    "data": audio_b64,
                 },
             ]
         )

@@ -36,6 +36,7 @@ logging.getLogger("transformers").setLevel(logging.WARNING)
 logging.getLogger("chromadb").setLevel(logging.WARNING)
 
 warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=FutureWarning, module="google.generativeai")
 
 limiter = Limiter(key_func=get_remote_address)
 

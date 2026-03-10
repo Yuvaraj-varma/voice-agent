@@ -69,7 +69,7 @@ export default function VoiceAgentPage() {
     form.append("file", blob, "input.webm");
     form.append("voiceId", selectedVoice);
 
-    await sendRequest(`${BACKEND}/agent`, form);
+    await sendRequest(`${BACKEND}/voice-agent`, form);
   };
 
   // --------------------------------
