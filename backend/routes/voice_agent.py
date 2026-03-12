@@ -52,10 +52,9 @@ class BaseVoiceAgent(ABC):
 
 class GeminiVoiceAgent(BaseVoiceAgent):
     def __init__(self, http_client: httpx.AsyncClient):
-        # Use dedicated Voice Agent Gemini key
+        # Use ONLY the dedicated Voice Agent Gemini key
         voice_agent_key = os.getenv("VOICE_AGENT_GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
-        if voice_agent_key:
-            genai.configure(api_key=voice_agent_key)
+        genai.configure(api_key=voice_agent_key)
         self.http = http_client
 
     def get_elevenlabs_key(self):
@@ -71,7 +70,7 @@ class GeminiVoiceAgent(BaseVoiceAgent):
 
             audio_b64 = base64.b64encode(audio).decode()
 
-            model = genai.GenerativeModel("gemini-2.5-flash")
+            model = genai.GenerativeModel("gemini-1.5-flash")
             response = model.generate_content([
                 "Transcribe this audio accurately. Output ONLY the text:",
                 {"mime_type": "audio/webm", "data": audio_b64},
@@ -92,7 +91,7 @@ Answer briefly and clearly.
 Question: {text}
 Answer:
 """
-            model = genai.GenerativeModel("gemini-2.5-flash")
+            model = genai.GenerativeModel("gemini-1.5-flash")
             response = model.generate_content(prompt)
 
             return response.text.strip() if response.text else "I couldn't process that."
