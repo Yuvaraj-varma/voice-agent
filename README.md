@@ -19,19 +19,25 @@
 
 **Backend**
 - ![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=flat&logo=fastapi) FastAPI + WebSockets
-- ![Python](https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white) Python
+- ![Python](https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white) Python 3.10+
 - Google Gemini AI (primary LLM) + DeepSeek (fallback)
-- ElevenLabs API (voice synthesis)
-- LangChain + ChromaDB (RAG pipeline)
-- HuggingFace Embeddings
+- ElevenLabs API + gTTS (voice synthesis)
+- LangChain + Pinecone (cloud vector DB)
+- Sentence Transformers (embeddings)
+- SlowAPI (rate limiting)
+- httpx (async HTTP client)
 
 **Frontend**
-- ![Next.js](https://img.shields.io/badge/Next.js-000000?style=flat&logo=next.js) Next.js + TailwindCSS
+- ![Next.js](https://img.shields.io/badge/Next.js-000000?style=flat&logo=next.js) Next.js 16 + React 19
+- TailwindCSS 4
+- Three.js + React Three Fiber (3D graphics)
+- Lucide React (icons)
+- Axios (HTTP client)
 - MediaRecorder API (real-time audio recording/playback)
 
 **Infrastructure**
 - Docker + docker-compose
-- PostgreSQL + MongoDB
+- ChromaDB (local vector storage)
 
 ---
 
@@ -97,18 +103,31 @@ docker-compose up --build
 ## 🔑 Environment Variables
 
 ```env
+# Primary AI Keys
 GEMINI_API_KEY=your_gemini_key
+VOICE_AGENT_GEMINI_API_KEY=your_voice_agent_key  # dedicated for voice agent
+
+# Voice Synthesis Keys
 ELEVENLABS_API_KEY=your_elevenlabs_key
-DEEPSEEK_API_KEY=your_deepseek_key  # optional fallback
+DS_TUTOR_ELEVENLABS_API_KEY=your_ds_tutor_key  # dedicated for DS tutor
+
+# Optional Fallback
+DEEPSEEK_API_KEY=your_deepseek_key
+
+# Vector Database (if using Pinecone cloud)
+PINECONE_API_KEY=your_pinecone_key  # optional
 ```
 
 ---
 
 ## 📌 Key Implementation Highlights
 
-- **RAG Pipeline** — Ingests PDFs → chunks text → generates vector embeddings → semantic search → feeds context to Gemini to reduce hallucinations
+- **RAG Pipeline** — Ingests PDFs → chunks text → generates vector embeddings (Sentence Transformers) → stores in Pinecone/ChromaDB → semantic search → feeds context to Gemini to reduce hallucinations
 - **Multi-provider LLM** — Gemini as primary, DeepSeek as automatic fallback with API key rotation for rate limit handling
+- **Dual TTS System** — ElevenLabs for premium voices + gTTS as free fallback option
+- **Dedicated API Keys** — Separate keys for Voice Agent and DS Tutor to prevent rate limit conflicts
 - **Production Features** — Rate limiting (SlowAPI), CORS middleware, custom exception handling, structured logging with request ID tracking, response caching
+- **3D UI Elements** — Three.js integration for enhanced visual experience
 
 ---
 
