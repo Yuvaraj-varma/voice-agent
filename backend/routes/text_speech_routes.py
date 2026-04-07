@@ -5,7 +5,7 @@ import os
 
 from utils.logger import log_error
 
-router = APIRouter()
+router = APIRouter(tags=["🔊 Text to Speech"])
 
 ELEVEN_URL = "https://api.elevenlabs.io/v1"
 
@@ -17,19 +17,17 @@ def get_api_key():
 # 🔊 TEXT → SPEECH
 # ---------------------------------------------
 # Fix default voiceId to use valid ElevenLabs voice
-@router.post("/speech")
+@router.post("/speech", summary="🔊 Convert text to audio", description="Send text → get MP3 audio back using ElevenLabs (fallback: gTTS)")
 async def text_to_speech(
     request: Request,
     text: str = Form(None),
-    voiceId: str = Form("EXAVITQu4vr4xnSDxMaL"),  # Use Sarah voice by default
+    voiceId: str = Form("EXAVITQu4vr4xnSDxMaL"),
 ):
     try:
-        # Allow JSON body OR form-data
         if text is None:
             try:
                 data = await request.json()
                 text = data.get("text", "").strip()
-                voiceId = data.get("voiceId", "EXAVITQu4vr4xnSDxMaL")
             except Exception as e:
                 log_error(e, "JSON parsing")
                 return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
@@ -37,43 +35,33 @@ async def text_to_speech(
         if not text:
             return JSONResponse({"error": "Text is empty"}, status_code=400)
 
+        # Try ElevenLabs first, fallback to gTTS
         api_key = get_api_key()
-        if not api_key:
-            return JSONResponse(
-                {"error": "ELEVENLABS_API_KEY missing"},
-                status_code=500,
-            )
+        if api_key:
+            url = f"{ELEVEN_URL}/text-to-speech/{voiceId}"
+            payload = {
+                "text": text[:5000],
+                "model_id": "eleven_turbo_v2",
+                "voice_settings": {"stability": 0.5, "similarity_boost": 0.8},
+            }
+            headers = {"xi-api-key": api_key, "Content-Type": "application/json"}
 
-        url = f"{ELEVEN_URL}/text-to-speech/{voiceId}"
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                res = await client.post(url, headers=headers, json=payload)
 
-        payload = {
-            "text": text[:5000],
-            "model_id": "eleven_turbo_v2",
-            "voice_settings": {
-                "stability": 0.5,
-                "similarity_boost": 0.8,
-            },
-        }
+            if res.status_code == 200:
+                return StreamingResponse(iter([res.content]), media_type="audio/mpeg")
 
-        headers = {
-            "xi-api-key": api_key,
-            "Content-Type": "application/json",
-        }
+            log_error(Exception(res.text), "TTS failed, falling back to gTTS")
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            res = await client.post(url, headers=headers, json=payload)
-
-        if res.status_code != 200:
-            log_error(Exception(res.text), "TTS failed")
-            return JSONResponse(
-                {"error": "TTS failed"},
-                status_code=500,
-            )
-
-        return StreamingResponse(
-            iter([res.content]),
-            media_type="audio/mpeg",
-        )
+        # Fallback to gTTS
+        from gtts import gTTS
+        import io
+        tts = gTTS(text=text[:5000], lang='en', slow=False)
+        buf = io.BytesIO()
+        tts.write_to_fp(buf)
+        buf.seek(0)
+        return StreamingResponse(buf, media_type="audio/mpeg")
 
     except Exception as e:
         log_error(e, "TTS")
@@ -83,7 +71,7 @@ async def text_to_speech(
 # ---------------------------------------------
 # 🎵 GET VOICES
 # ---------------------------------------------
-@router.get("/voices")
+@router.get("/voices", summary="🎵 Get available voices", description="Returns list of ElevenLabs voices for the voice selector dropdown")
 async def get_voices():
     try:
         api_key = get_api_key()

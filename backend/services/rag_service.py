@@ -25,7 +25,7 @@ class RAGService:
         self.embeddings = None
         self.providers = []
         self.cache = {}
-        self.max_chunks = 5
+        self.max_chunks = 3
 
     # --------------------------------------------------
     # LIFECYCLE
@@ -64,9 +64,16 @@ class RAGService:
         if self.embedding_model is None:
             from sentence_transformers import SentenceTransformer
             logger.info("Loading HuggingFace embedding model...")
-            self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+            self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2', device='cpu')
             logger.info("Embedding model loaded")
         return self.embedding_model
+
+    def _encode(self, text: str) -> list:
+        try:
+            return self._get_embedding_model().encode(text, show_progress_bar=False).tolist()
+        except Exception as e:
+            logger.error(f"Encoding error: {e}")
+            return []
 
 
 
@@ -91,7 +98,9 @@ class RAGService:
             return [], ""
 
         try:
-            embedding = self._get_embedding_model().encode(question).tolist()
+            embedding = self._encode(question)
+            if not embedding:
+                return [], ""
             
             results = self.pc_index.query(
                 vector=embedding,

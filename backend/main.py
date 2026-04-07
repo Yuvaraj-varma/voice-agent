@@ -42,8 +42,20 @@ warnings.filterwarnings("ignore", category=FutureWarning, module="google.generat
 limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(
-    title="Voice Agent Backend",
+    title="Voice AI Agent Backend",
     version="1.0.0",
+    description="""
+## 🎙️ Voice AI Agent System
+
+| Feature | Button | Endpoint |
+|---|---|---|
+| 🔊 Text to Speech | Generate Voice | `POST /api/speech` |
+| 🎤 Speech to Speech | Speech to Speech | `POST /api/voice-transform` |
+| 🤖 Voice Agent (voice) | Voice Agent mic | `POST /api/voice-agent` |
+| 🤖 Voice Agent (text) | Voice Agent type | `POST /api/text-agent` |
+| 📚 DS Tutor | DS Tutor chat | `POST /api/ds-rag-agent` |
+| 🎵 Get Voices | Voice dropdown | `GET /api/voices` |
+"""
 )
 
 # -----------------------------------------------------

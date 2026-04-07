@@ -12,7 +12,7 @@ import google.generativeai as genai
 
 from utils.logger import logger
 
-router = APIRouter(tags=["Voice Agent"])
+router = APIRouter(tags=["🤖 Voice Agent"])
 
 # --------------------------------------------
 # MODELS
@@ -102,32 +102,37 @@ Answer:
             return "I encountered an error."
 
     async def synthesize_speech(self, text: str, voice_id: str) -> Optional[str]:
+        if not text:
+            return None
+
+        # Try ElevenLabs first
         elevenlabs_key = self.get_elevenlabs_key()
-        if not elevenlabs_key or not text:
-            return None
+        if elevenlabs_key:
+            try:
+                res = await self.http.post(
+                    f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
+                    headers={"xi-api-key": elevenlabs_key, "Content-Type": "application/json"},
+                    json={"text": text[:5000], "model_id": "eleven_turbo_v2"},
+                )
+                if res.status_code == 200:
+                    audio_b64 = base64.b64encode(res.content).decode()
+                    return f"data:audio/mpeg;base64,{audio_b64}"
+                logger.error(f"ElevenLabs error {res.status_code}, falling back to gTTS")
+            except Exception as e:
+                logger.error(f"ElevenLabs failed: {e}, falling back to gTTS")
 
+        # Fallback to gTTS
         try:
-            res = await self.http.post(
-                f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
-                headers={
-                    "xi-api-key": elevenlabs_key,
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "text": text[:5000],
-                    "model_id": "eleven_turbo_v2",
-                },
-            )
-
-            if res.status_code == 200:
-                audio_b64 = base64.b64encode(res.content).decode()
-                return f"data:audio/mpeg;base64,{audio_b64}"
-
-            logger.error(f"ElevenLabs error {res.status_code}: {res.text[:200]}")
-            return None
-
+            from gtts import gTTS
+            import io
+            tts = gTTS(text=text[:5000], lang='en', slow=False)
+            buf = io.BytesIO()
+            tts.write_to_fp(buf)
+            buf.seek(0)
+            audio_b64 = base64.b64encode(buf.read()).decode()
+            return f"data:audio/mpeg;base64,{audio_b64}"
         except Exception as e:
-            logger.error(f"TTS error: {e}")
+            logger.error(f"gTTS error: {e}")
             return None
 
 
@@ -211,7 +216,7 @@ def get_orchestrator():
 # ENDPOINTS
 # --------------------------------------------
 
-@router.post("/voice-agent", response_model=AgentResponse)
+@router.post("/voice-agent", response_model=AgentResponse, summary="🎤 Speak to AI agent", description="Upload voice recording → Gemini transcribes + responds → ElevenLabs speaks back")
 async def voice_agent(
     file: UploadFile = File(...),
     voiceId: str = Form("21m00Tcm4TlvDq8ikWAM"),
@@ -220,7 +225,7 @@ async def voice_agent(
     return await orchestrator.process_voice(file, voiceId)
 
 
-@router.post("/text-agent", response_model=AgentResponse)
+@router.post("/text-agent", response_model=AgentResponse, summary="⌨️ Type to AI agent", description="Type your question → Gemini responds → ElevenLabs speaks back")
 async def text_agent(
     request: TextAgentRequest,
     orchestrator: VoiceAgentOrchestrator = Depends(get_orchestrator),
@@ -228,7 +233,7 @@ async def text_agent(
     return await orchestrator.process_text(request.text, request.voiceId)
 
 
-@router.get("/voice-agent-health")
+@router.get("/voice-agent-health", summary="✅ Voice agent health check")
 async def voice_agent_health():
     return {
         "status": "ok",

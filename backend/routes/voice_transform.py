@@ -9,7 +9,7 @@ import tempfile
 
 from utils.logger import log_error
 
-router = APIRouter(tags=["Voice Transform"])
+router = APIRouter(tags=["🎤 Speech to Speech"])
 
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 
@@ -62,7 +62,7 @@ async def eleven_tts(text: str, voice_id: str):
 # ---------------------------------------------------------
 # VOICE TRANSFORM ENDPOINT
 # ---------------------------------------------------------
-@router.post("/voice-transform")
+@router.post("/voice-transform", summary="🎤 Upload audio → get different voice", description="Upload your voice recording → Gemini transcribes → ElevenLabs speaks in selected voice")
 async def voice_transform(
     file: UploadFile = File(...),
     voiceId: str = Form(...),
@@ -136,16 +136,16 @@ async def voice_transform(
                 status_code=400,
             )
 
-        # -------------------------
-        # ElevenLabs TTS
-        # -------------------------
+        # ElevenLabs TTS with gTTS fallback
         audio_bytes = await eleven_tts(text, voiceId)
-
         if not audio_bytes:
-            return JSONResponse(
-                {"error": "Failed to generate audio"},
-                status_code=500,
-            )
+            from gtts import gTTS
+            import io
+            tts = gTTS(text=text[:5000], lang='en', slow=False)
+            buf = io.BytesIO()
+            tts.write_to_fp(buf)
+            buf.seek(0)
+            audio_bytes = buf.read()
 
         return StreamingResponse(
             iter([audio_bytes]),
