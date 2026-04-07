@@ -60,17 +60,15 @@ class RAGService:
 
         logger.info("RAG service initialized")
 
-    def _get_embedding_model(self):
-        if self.embedding_model is None:
-            from sentence_transformers import SentenceTransformer
-            logger.info("Loading HuggingFace embedding model...")
-            self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2', device='cpu')
-            logger.info("Embedding model loaded")
-        return self.embedding_model
-
     def _encode(self, text: str) -> list:
         try:
-            return self._get_embedding_model().encode(text, show_progress_bar=False).tolist()
+            from google import genai as google_genai
+            client = google_genai.Client(api_key=os.getenv("RAG_GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY"))
+            result = client.models.embed_content(
+                model="gemini-embedding-001",
+                contents=text
+            )
+            return result.embeddings[0].values
         except Exception as e:
             logger.error(f"Encoding error: {e}")
             return []
