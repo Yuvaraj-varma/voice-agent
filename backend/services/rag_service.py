@@ -34,25 +34,16 @@ class RAGService:
         logger.info("Initializing RAG service (Pinecone)")
 
         self.http_client = httpx.AsyncClient(timeout=30.0)
+        self.embedding_model = None
 
-        # Load embedding model once at startup
-        from sentence_transformers import SentenceTransformer
-        logger.info("Loading HuggingFace embedding model...")
-        self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-        logger.info("Embedding model loaded")
-
-        # Simple embeddings for free tier
         rag_gemini_key = os.getenv("RAG_GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
         genai.configure(api_key=rag_gemini_key)
 
-        # Pinecone cloud vector DB (no disk storage needed)
         pc_api_key = os.getenv("PINECONE_API_KEY")
         if pc_api_key:
             try:
                 pc = Pinecone(api_key=pc_api_key)
                 index_name = "ds-tutor"
-                
-                # Check if index exists
                 if index_name not in pc.list_indexes().names():
                     logger.warning(f"Pinecone index '{index_name}' not found. Create it manually.")
                 else:
@@ -68,6 +59,14 @@ class RAGService:
         ]
 
         logger.info("RAG service initialized")
+
+    def _get_embedding_model(self):
+        if self.embedding_model is None:
+            from sentence_transformers import SentenceTransformer
+            logger.info("Loading HuggingFace embedding model...")
+            self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+            logger.info("Embedding model loaded")
+        return self.embedding_model
 
 
 
@@ -92,8 +91,7 @@ class RAGService:
             return [], ""
 
         try:
-            # Use pre-loaded model
-            embedding = self.embedding_model.encode(question).tolist()
+            embedding = self._get_embedding_model().encode(question).tolist()
             
             results = self.pc_index.query(
                 vector=embedding,
