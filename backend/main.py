@@ -22,6 +22,7 @@ from services.rag_service import RAGService
 
 import logging
 import warnings
+import asyncio
 
 # ENV
 env_path = Path(__file__).parent / ".env"
@@ -51,10 +52,8 @@ app = FastAPI(
 @app.on_event("startup")
 async def startup():
     logger.info("Starting backend services...")
-
     app.state.rag_service = RAGService()
-    await app.state.rag_service.startup()
-
+    asyncio.create_task(app.state.rag_service.startup())
     logger.info("All services ready")
 
 
