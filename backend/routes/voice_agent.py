@@ -70,7 +70,7 @@ class GeminiVoiceAgent(BaseVoiceAgent):
 
             audio_b64 = base64.b64encode(audio).decode()
 
-            model = genai.GenerativeModel("gemini-1.5-flash")
+            model = genai.GenerativeModel("gemini-2.0-flash")
             response = model.generate_content([
                 "Transcribe this audio accurately. Output ONLY the text:",
                 {"mime_type": "audio/webm", "data": audio_b64},
@@ -91,7 +91,7 @@ Answer briefly and clearly.
 Question: {text}
 Answer:
 """
-            model = genai.GenerativeModel("gemini-1.5-flash")
+            model = genai.GenerativeModel("gemini-2.0-flash")
             response = model.generate_content(prompt)
 
             return response.text.strip() if response.text else "I couldn't process that."
