@@ -10,7 +10,7 @@ from utils.logger import logger
 class GeminiProvider(BaseLLMProvider):
     def __init__(self, api_key: str):
         genai.configure(api_key=api_key)
-        self.model = "gemini-2.5-flash"
+        self.model = "gemini-2.5-flash-lite"
 
     @property
     def provider_name(self) -> str:

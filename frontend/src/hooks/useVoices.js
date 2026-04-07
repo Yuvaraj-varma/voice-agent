@@ -9,6 +9,15 @@ export default function useVoices() {
   const [loadingVoices, setLoadingVoices] = useState(true);
 
   useEffect(() => {
+    const cached = sessionStorage.getItem("voices");
+    if (cached) {
+      const normalized = JSON.parse(cached);
+      setVoices(normalized);
+      if (normalized.length > 0) setSelectedVoice(normalized[0].id);
+      setLoadingVoices(false);
+      return;
+    }
+
     async function loadVoices() {
       try {
         const data = await fetchVoices();
@@ -22,11 +31,9 @@ export default function useVoices() {
           }))
           .filter((v) => v.id);
 
+        sessionStorage.setItem("voices", JSON.stringify(normalized));
         setVoices(normalized);
-
-        if (normalized.length > 0) {
-          setSelectedVoice(normalized[0].id);
-        }
+        if (normalized.length > 0) setSelectedVoice(normalized[0].id);
       } catch (err) {
         console.error("Voice hook error:", err);
       } finally {

@@ -25,6 +25,7 @@ export async function askDSTutor(question, voiceId, includeAudio = false) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(120000),
   });
 
   if (!res.ok) throw new Error("Request failed");

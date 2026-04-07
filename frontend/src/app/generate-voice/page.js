@@ -40,6 +40,7 @@ export default function GenerateVoice() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text, voiceId: selectedVoice }),
+        signal: AbortSignal.timeout(30000),
       });
 
       if (!res.ok) {

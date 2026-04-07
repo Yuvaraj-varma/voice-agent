@@ -111,7 +111,7 @@ async def voice_transform(
         # -------------------------
         # Gemini Speech-to-Text
         # -------------------------
-        model = genai.GenerativeModel("gemini-2.5-flash")
+        model = genai.GenerativeModel("gemini-2.5-flash-lite")
 
         with open(tmp_path, "rb") as audio_file:
             audio_data = audio_file.read()

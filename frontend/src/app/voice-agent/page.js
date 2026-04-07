@@ -26,6 +26,7 @@ export default function VoiceAgentPage() {
       const res = await fetch(url, {
         method: "POST",
         body,
+        signal: AbortSignal.timeout(60000),
         ...(isJSON && { headers: { "Content-Type": "application/json" } }),
       });
 
