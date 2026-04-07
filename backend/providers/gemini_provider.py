@@ -1,5 +1,6 @@
 import os
 import time
+import asyncio
 from typing import Optional
 import google.generativeai as genai
 
@@ -21,7 +22,7 @@ class GeminiProvider(BaseLLMProvider):
             start = time.perf_counter()
 
             model = genai.GenerativeModel(self.model)
-            response = model.generate_content(prompt)
+            response = await asyncio.to_thread(model.generate_content, prompt)
 
             latency = round(time.perf_counter() - start, 3)
             logger.info(f"Gemini latency={latency}s")

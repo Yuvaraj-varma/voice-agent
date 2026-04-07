@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import APIRouter, UploadFile, File, Form
 from fastapi.responses import JSONResponse, StreamingResponse
 from pathlib import Path
@@ -119,15 +120,13 @@ async def voice_transform(
         import base64
         audio_b64 = base64.b64encode(audio_data).decode()
 
-        stt_response = model.generate_content(
-            [
-                "Transcribe this audio accurately. Output ONLY the text:",
+        stt_response = await asyncio.to_thread(model.generate_content, [
                 {
                     "mime_type": "audio/webm",
                     "data": audio_b64,
                 },
-            ]
-        )
+                "Transcribe this audio accurately. Output ONLY the text:",
+            ])
 
         text = (stt_response.text or "").strip()
 

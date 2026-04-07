@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import APIRouter, File, UploadFile, Form, HTTPException, Depends
 from pydantic import BaseModel
 import httpx
@@ -71,7 +72,7 @@ class GeminiVoiceAgent(BaseVoiceAgent):
             audio_b64 = base64.b64encode(audio).decode()
 
             model = genai.GenerativeModel("gemini-2.5-flash-lite")
-            response = model.generate_content([
+            response = await asyncio.to_thread(model.generate_content, [
                 "Transcribe this audio accurately. Output ONLY the text:",
                 {"mime_type": "audio/webm", "data": audio_b64},
             ])
@@ -92,7 +93,7 @@ Question: {text}
 Answer:
 """
             model = genai.GenerativeModel("gemini-2.5-flash-lite")
-            response = model.generate_content(prompt)
+            response = await asyncio.to_thread(model.generate_content, prompt)
 
             return response.text.strip() if response.text else "I couldn't process that."
 
