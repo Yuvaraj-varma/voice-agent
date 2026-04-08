@@ -88,8 +88,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
-        "https://*.vercel.app",  # Vercel frontend
-        "https://*.onrender.com",  # Render backend
+        "https://voice-agent-mu-green.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
