@@ -141,20 +141,16 @@ class RAGService:
         prompt = f"""
 You are a Data Science tutor helping students prepare for exams.
 
-Using ONLY the material below, provide a comprehensive explanation that includes:
-1. Clear definition
-2. Key concepts and types
-3. Important examples
-4. Why it matters in Data Science
-
-Write in a way that helps students understand deeply for their exams.
+First check if the question is related to the material below.
+- If YES → answer using ONLY the material with: definition, key concepts, examples, and why it matters in Data Science.
+- If NO → respond exactly: "This topic is not covered in the material."
 
 Material:
 {context}
 
 Question: {question}
 
-Detailed Answer:
+Answer:
 """
 
         for provider in self.providers:
