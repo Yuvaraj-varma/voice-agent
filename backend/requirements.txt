@@ -10,8 +10,8 @@ python-multipart==0.0.9
 # AI
 google-generativeai
 
-# Vector DB (cloud-based, zero disk storage)
-pinecone-client==5.0.0
+# Vector DB
+pinecone
 
 # LangChain
 langchain
