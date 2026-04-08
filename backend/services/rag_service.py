@@ -3,77 +3,94 @@ import base64
 import time
 import httpx
 from typing import List, Optional, Tuple
-from pinecone import Pinecone, ServerlessSpec
-import google.generativeai as genai
 
-from utils.gemini_rotator import GeminiKeyRotator
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+from langchain_pinecone import PineconeVectorStore
+from langchain.chains import RetrievalQA
+from langchain.prompts import PromptTemplate
+from pinecone import Pinecone
+
 from utils.logger import logger
-
-from providers.gemini_provider import GeminiProvider
-from providers.deepseek_provider import DeepSeekProvider
 
 
 class RAGService:
     """
-    Lifecycle-managed RAG service.
-    Created once at FastAPI startup.
+    LangChain-powered RAG service using Pinecone + Gemini.
     """
 
     def __init__(self):
         self.http_client: Optional[httpx.AsyncClient] = None
-        self.pc_index = None
-        self.embeddings = None
-        self.providers = []
+        self.qa_chain = None
+        self.vectorstore = None
         self.cache = {}
-        self.max_chunks = 3
 
     # --------------------------------------------------
     # LIFECYCLE
     # --------------------------------------------------
     async def startup(self):
-        logger.info("Initializing RAG service (Pinecone)")
+        logger.info("Initializing LangChain RAG service")
 
         self.http_client = httpx.AsyncClient(timeout=30.0)
-        self.embedding_model = None
 
-        rag_gemini_key = os.getenv("RAG_GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
-        genai.configure(api_key=rag_gemini_key)
-
+        api_key = os.getenv("RAG_GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
         pc_api_key = os.getenv("PINECONE_API_KEY")
-        if pc_api_key:
-            try:
-                pc = Pinecone(api_key=pc_api_key)
-                index_name = "ds-tutor"
-                if index_name not in pc.list_indexes().names():
-                    logger.warning(f"Pinecone index '{index_name}' not found. Create it manually.")
-                else:
-                    self.pc_index = pc.Index(index_name)
-                    logger.info("Pinecone connected successfully")
-            except Exception as e:
-                logger.error(f"Pinecone init failed: {e}")
-        else:
+
+        if not pc_api_key:
             logger.warning("PINECONE_API_KEY not set. RAG disabled.")
+            return
 
-        self.providers = [
-            GeminiProvider(rag_gemini_key),
-        ]
-
-        logger.info("RAG service initialized")
-
-    def _encode(self, text: str) -> list:
         try:
-            from google import genai as google_genai
-            client = google_genai.Client(api_key=os.getenv("RAG_GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY"))
-            result = client.models.embed_content(
-                model="gemini-embedding-001",
-                contents=text
+            # LangChain Embeddings
+            embeddings = GoogleGenerativeAIEmbeddings(
+                model="models/embedding-001",
+                google_api_key=api_key
             )
-            return result.embeddings[0].values
+
+            # LangChain Pinecone VectorStore
+            self.vectorstore = PineconeVectorStore(
+                index_name="ds-tutor",
+                embedding=embeddings,
+                pinecone_api_key=pc_api_key
+            )
+
+            # LangChain LLM
+            llm = ChatGoogleGenerativeAI(
+                model="gemini-2.0-flash",
+                google_api_key=api_key,
+                temperature=0.3
+            )
+
+            # LangChain Prompt Template
+            prompt_template = PromptTemplate(
+                input_variables=["context", "question"],
+                template="""
+You are a Data Science tutor helping students prepare for exams.
+
+First check if the question is related to the material below.
+- If YES → answer using ONLY the material with: definition, key concepts, examples, and why it matters in Data Science.
+- If NO → respond exactly: "This topic is not covered in the material."
+
+Context:
+{context}
+
+Question: {question}
+
+Answer:"""
+            )
+
+            # LangChain RetrievalQA Chain
+            self.qa_chain = RetrievalQA.from_chain_type(
+                llm=llm,
+                chain_type="stuff",
+                retriever=self.vectorstore.as_retriever(search_kwargs={"k": 3}),
+                chain_type_kwargs={"prompt": prompt_template},
+                return_source_documents=True
+            )
+
+            logger.info("LangChain RAG service initialized successfully")
+
         except Exception as e:
-            logger.error(f"Encoding error: {e}")
-            return []
-
-
+            logger.error(f"RAG init failed: {e}")
 
     async def shutdown(self):
         if self.http_client:
@@ -84,131 +101,61 @@ class RAGService:
     # HEALTH CHECK
     # --------------------------------------------------
     def health_check(self) -> bool:
-        return self.pc_index is not None
-
-    # --------------------------------------------------
-    # RETRIEVAL
-    # --------------------------------------------------
-    async def retrieve_context(
-        self, question: str
-    ) -> Tuple[List[dict], str]:
-        if not self.pc_index:
-            return [], ""
-
-        try:
-            embedding = self._encode(question)
-            if not embedding:
-                return [], ""
-            
-            results = self.pc_index.query(
-                vector=embedding,
-                top_k=self.max_chunks,
-                include_metadata=True
-            )
-            
-            docs = []
-            for match in results.matches:
-                docs.append({
-                    "content": match.metadata.get("text", ""),
-                    "page": match.metadata.get("page", 0)
-                })
-            
-            context = "\n\n".join([d["content"] for d in docs])
-            logger.info(f"Retrieved {len(docs)} docs from Pinecone")
-            return docs, context
-            
-        except Exception as e:
-            logger.error(f"Retrieval error: {e}")
-            return [], ""
-
-    def extract_sources(self, docs: List[dict]) -> List[str]:
-        sources = []
-        for d in docs:
-            page = d.get("page")
-            if isinstance(page, int):
-                sources.append(f"Page {page + 1}")
-        return list(set(sources))
-
-    # --------------------------------------------------
-    # GENERATION
-    # --------------------------------------------------
-    async def generate_answer(
-        self, question: str, context: str
-    ) -> Tuple[str, str]:
-        if not context:
-            return "This topic is not covered in the material.", "none"
-
-        prompt = f"""
-You are a Data Science tutor helping students prepare for exams.
-
-First check if the question is related to the material below.
-- If YES → answer using ONLY the material with: definition, key concepts, examples, and why it matters in Data Science.
-- If NO → respond exactly: "This topic is not covered in the material."
-
-Material:
-{context}
-
-Question: {question}
-
-Answer:
-"""
-
-        for provider in self.providers:
-            start = time.perf_counter()
-
-            result = await provider.generate(prompt)
-
-            latency = round(time.perf_counter() - start, 3)
-            logger.info(
-                f"provider={provider.provider_name} latency={latency}s"
-            )
-
-            if result:
-                return result, provider.provider_name
-
-        return "Unable to generate response.", "none"
+        return self.qa_chain is not None
 
     # --------------------------------------------------
     # MAIN RAG PIPELINE
     # --------------------------------------------------
-    async def process_question(self, question: str):
+    async def process_question(self, question: str) -> Tuple[str, List[str], str]:
         if question in self.cache:
             logger.info("RAG cache hit")
             return self.cache[question]
 
-        docs, context = await self.retrieve_context(question)
-        answer, provider = await self.generate_answer(question, context)
+        if not self.qa_chain:
+            return "RAG service is not available.", [], "none"
 
-        result = (answer, self.extract_sources(docs), provider)
-        self.cache[question] = result
+        try:
+            import asyncio
+            result = await asyncio.to_thread(self.qa_chain.invoke, {"query": question})
 
-        return result
+            answer = result.get("result", "Unable to generate response.")
+
+            # Extract source pages from documents
+            sources = []
+            for doc in result.get("source_documents", []):
+                page = doc.metadata.get("page")
+                if isinstance(page, int):
+                    sources.append(f"Page {page + 1}")
+            sources = list(set(sources))
+
+            logger.info(f"RAG answer generated | sources: {sources}")
+
+            self.cache[question] = (answer, sources, "gemini")
+            return answer, sources, "gemini"
+
+        except Exception as e:
+            logger.error(f"RAG pipeline error: {e}")
+            return "Unable to generate response.", [], "none"
 
     # --------------------------------------------------
-    # TTS - FIX PROBLEM 3: Use gTTS (free, works on server IPs)
+    # TTS
     # --------------------------------------------------
-    async def synthesize_speech(
-        self, text: str, voice_id: str = None
-    ) -> Optional[str]:
+    async def synthesize_speech(self, text: str, voice_id: str = None) -> Optional[str]:
         try:
             from gtts import gTTS
             import io
-            
+
             if not text:
                 return None
-            
-            # Generate speech with gTTS
+
             tts = gTTS(text=text[:5000], lang='en', slow=False)
-            
-            # Save to bytes buffer
             audio_buffer = io.BytesIO()
             tts.write_to_fp(audio_buffer)
             audio_buffer.seek(0)
-            
-            # Return base64 encoded audio
+
             audio_data = audio_buffer.read()
             return f"data:audio/mpeg;base64,{base64.b64encode(audio_data).decode()}"
-            
+
         except Exception as e:
             logger.error(f"TTS error: {e}")
             return None
