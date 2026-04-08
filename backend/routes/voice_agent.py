@@ -86,8 +86,10 @@ class GeminiVoiceAgent(BaseVoiceAgent):
     async def generate_response(self, text: str) -> str:
         try:
             prompt = f"""
-You are a helpful voice assistant.
+You are a helpful voice assistant with up-to-date knowledge.
 Answer briefly and clearly.
+If asked about current events or today's date, answer based on your latest knowledge and mention your knowledge cutoff if needed.
+Do NOT say you don't have access to real-time data unless absolutely necessary.
 
 Question: {text}
 Answer:
