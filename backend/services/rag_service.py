@@ -8,6 +8,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmb
 from langchain_pinecone import PineconeVectorStore
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate
 from pinecone import Pinecone
 
 from utils.logger import logger

@@ -14,10 +14,11 @@ google-generativeai
 pinecone
 
 # LangChain
-langchain
+langchain==0.3.25
 langchain-google-genai
 langchain-pinecone
 langchain-community
+langchain-core
 
 # TTS (free, no API limits)
 gTTS
