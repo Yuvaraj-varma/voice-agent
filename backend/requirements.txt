@@ -23,5 +23,8 @@ langchain-core
 # TTS (free, no API limits)
 gTTS
 
+# Agentic AI
+duckduckgo-search
+
 # Core
 sentence-transformers

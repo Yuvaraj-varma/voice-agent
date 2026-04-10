@@ -85,19 +85,39 @@ class GeminiVoiceAgent(BaseVoiceAgent):
 
     async def generate_response(self, text: str) -> str:
         try:
-            prompt = f"""
-You are a helpful voice assistant with up-to-date knowledge.
-Answer briefly and clearly.
-If asked about current events or today's date, answer based on your latest knowledge and mention your knowledge cutoff if needed.
-Do NOT say you don't have access to real-time data unless absolutely necessary.
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            from langchain.agents import AgentExecutor, create_tool_calling_agent
+            from langchain_core.prompts import ChatPromptTemplate
+            from langchain_core.tools import tool
 
-Question: {text}
-Answer:
-"""
-            model = genai.GenerativeModel("gemini-2.5-flash-lite")
-            response = await asyncio.to_thread(model.generate_content, prompt)
+            @tool
+            def web_search(query: str) -> str:
+                """Search the web for real-time information, latest news, current events, prices."""
+                try:
+                    from duckduckgo_search import DDGS
+                    results = DDGS().text(query, max_results=3)
+                    if not results:
+                        return "No results found."
+                    return "\n".join([f"{r['title']}: {r['body']}" for r in results])
+                except Exception as e:
+                    return f"Search failed: {e}"
 
-            return response.text.strip() if response.text else "I couldn't process that."
+            llm = ChatGoogleGenerativeAI(
+                model="gemini-2.5-flash-lite",
+                google_api_key=os.getenv("VOICE_AGENT_GEMINI_API_KEY"),
+                temperature=0.3
+            )
+
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", "You are a helpful voice assistant. Answer briefly and clearly. Use web_search tool for real-time info like news, weather, prices, current events."),
+                ("human", "{input}"),
+                ("placeholder", "{agent_scratchpad}"),
+            ])
+
+            agent = create_tool_calling_agent(llm, [web_search], prompt)
+            executor = AgentExecutor(agent=agent, tools=[web_search], verbose=False, max_iterations=3)
+            result = await asyncio.to_thread(executor.invoke, {"input": text})
+            return result.get("output", "I couldn't process that.")
 
         except Exception as e:
             logger.error(f"Response generation error: {e}")
