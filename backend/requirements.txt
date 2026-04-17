@@ -20,6 +20,9 @@ langchain-pinecone
 langchain-community
 langchain-core
 
+# Agentic AI
+duckduckgo-search
+
 # TTS (free, no API limits)
 gTTS
 

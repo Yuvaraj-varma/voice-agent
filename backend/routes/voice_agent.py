@@ -94,7 +94,7 @@ class GeminiVoiceAgent(BaseVoiceAgent):
             def web_search(query: str) -> str:
                 """Search the web for real-time information, latest news, current events, prices."""
                 try:
-                    from duckduckgo_search import DDGS
+                    from ddgs import DDGS
                     results = DDGS().text(query, max_results=3)
                     if not results:
                         return "No results found."
@@ -103,8 +103,8 @@ class GeminiVoiceAgent(BaseVoiceAgent):
                     return f"Search failed: {e}"
 
             llm = ChatGoogleGenerativeAI(
-                model="gemini-2.5-flash-lite",
-                google_api_key=os.getenv("VOICE_AGENT_GEMINI_API_KEY"),
+                model="gemini-1.5-flash",
+                google_api_key=os.getenv("VOICE_AGENT_GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY"),
                 temperature=0.3
             )
 
@@ -115,8 +115,9 @@ class GeminiVoiceAgent(BaseVoiceAgent):
             ])
 
             agent = create_tool_calling_agent(llm, [web_search], prompt)
-            executor = AgentExecutor(agent=agent, tools=[web_search], verbose=False, max_iterations=3)
+            executor = AgentExecutor(agent=agent, tools=[web_search], verbose=True, max_iterations=3)
             result = await asyncio.to_thread(executor.invoke, {"input": text})
+            logger.info(f"Agent result: {result}")
             return result.get("output", "I couldn't process that.")
 
         except Exception as e:

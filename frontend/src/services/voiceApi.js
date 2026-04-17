@@ -1,7 +1,7 @@
 import { BACKEND } from "../config/api";
 
 export async function fetchVoices() {
-  const res = await fetch(`${BACKEND}/voices`, { signal: AbortSignal.timeout(10000) });
+  const res = await fetch(`${BACKEND}/voices`, { signal: AbortSignal.timeout(60000) });
   if (!res.ok) throw new Error("Failed to fetch voices");
   return res.json();
 }
