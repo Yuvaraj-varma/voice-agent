@@ -1,10 +1,11 @@
 import { BACKEND } from "@/config/api";
 
-export async function uploadPDF(file) {
+export async function uploadPDF(file, sessionId) {
   const form = new FormData();
   form.append("file", file);
+  form.append("session_id", sessionId);
 
-  const res = await fetch(`${BACKEND}/upload-pdf`, {
+  const res = await fetch(`${BACKEND}/upload-invoice`, {
     method: "POST",
     body: form,
   });
@@ -13,15 +14,15 @@ export async function uploadPDF(file) {
   return res.json();
 }
 
-export async function askDSTutor(question, voiceId, includeAudio = false) {
-  const payload = { question };
-  
+export async function askDSTutor(question, voiceId, includeAudio = false, sessionId = "default") {
+  const payload = { question, session_id: sessionId };
+
   if (includeAudio && voiceId) {
     payload.includeAudio = true;
     payload.voiceId = voiceId;
   }
-  
-  const res = await fetch(`${BACKEND}/ds-rag-agent`, {
+
+  const res = await fetch(`${BACKEND}/invoice-query`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),

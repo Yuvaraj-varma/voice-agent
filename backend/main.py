@@ -23,6 +23,7 @@ from services.rag_service import RAGService
 import logging
 import warnings
 import asyncio
+import os
 
 # ENV
 env_path = Path(__file__).parent / ".env"
@@ -84,12 +85,11 @@ app.add_middleware(
     allowed_hosts=["*"],  # Allow all hosts for deployment
 )
 
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,https://voice-agent-mu-green.vercel.app")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "https://voice-agent-mu-green.vercel.app",
-    ],
+    allow_origins=ALLOWED_ORIGINS.split(","),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
