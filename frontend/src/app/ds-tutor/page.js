@@ -1,16 +1,16 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
 import useVoices from "@/hooks/useVoices";
 import { uploadPDF, askDSTutor } from "@/services/dsTutorApi";
 
 const SUGGESTIONS = [
-  "What is a Stack ADT?",
-  "Explain Binary Tree traversals",
-  "Difference between Array and Linked List",
-  "What is FIFO and LIFO?",
-  "What are Linear vs Non-Linear structures?",
+  "What is the total amount of all invoices?",
+  "List all invoices from last month",
+  "Which vendor has the highest invoice amount?",
+  "Show invoices that are unpaid",
+  "What is the invoice number for the latest invoice?",
 ];
 
 const BotIcon = () => (
@@ -57,7 +57,7 @@ export default function DSTutorPage() {
   const [messages, setMessages] = useState([
     {
       role: "assistant",
-      content: "Hello! 👋 I'm your **DS Tutor**. Upload a PDF or ask me anything about Data Structures — definitions, examples, comparisons, or exam prep. I'm here to help you deeply understand the concepts!",
+      content: "Hello! 👋 I'm your **Invoice Assistant**. Upload an invoice PDF and ask me anything — total amounts, vendor details, due dates, payment status, and more! 📄",
       sources: [],
     },
   ]);
@@ -68,7 +68,35 @@ export default function DSTutorPage() {
   const [currentAudio, setCurrentAudio] = useState(null);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
+  const sessionId = useRef(
+    typeof window !== "undefined"
+      ? (localStorage.getItem("invoiceSessionId") || (() => {
+          const id = crypto.randomUUID();
+          localStorage.setItem("invoiceSessionId", id);
+          return id;
+        })())
+      : "default"
+  );
   const { voices, selectedVoice, setSelectedVoice } = useVoices();
+
+  const handleAudioPlay = useCallback((audioSrc) => {
+    if (currentAudio) {
+      currentAudio.pause();
+      setCurrentAudio(null);
+    }
+    const audio = new Audio(audioSrc);
+    audio.play();
+    setCurrentAudio(audio);
+    audio.onended = () => setCurrentAudio(null);
+  }, [currentAudio]);
+
+  const handleSend = useCallback(() => send(), [input, loading]);
+  const handleSuggestion = useCallback((s) => () => send(s), [loading]);
+  const handleVoiceToggle = useCallback(() => setVoiceEnabled(v => !v), []);
+  const handleInputChange = useCallback((e) => setInput(e.target.value), []);
+  const handleKeyDown = useCallback((e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+  }, [input, loading]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -80,11 +108,11 @@ export default function DSTutorPage() {
 
     setLoading(true);
     try {
-      const data = await uploadPDF(file);
+      const data = await uploadPDF(file, sessionId.current);
       setUploadMessage(`✅ ${data.message}`);
       setMessages(prev => [...prev, {
         role: "assistant",
-        content: `📄 **PDF uploaded successfully!** You can now ask questions about the content.`,
+        content: `🧾 **Invoice uploaded successfully!** You can now ask questions about this invoice.`,
         sources: [],
       }]);
     } catch {
@@ -102,7 +130,7 @@ export default function DSTutorPage() {
     setMessages(prev => [...prev, userMsg]);
     setLoading(true);
     try {
-      const data = await askDSTutor(q, voiceEnabled ? selectedVoice : null, voiceEnabled);
+      const data = await askDSTutor(q, voiceEnabled ? selectedVoice : null, voiceEnabled, sessionId.current);
       setMessages(prev => [...prev, { 
         role: "assistant", 
         content: data.answer || data.text,
@@ -124,20 +152,20 @@ export default function DSTutorPage() {
     <div className="min-h-screen bg-white flex flex-col font-serif text-gray-800">
       {/* Header */}
       <div className="border-b border-gray-200 px-6 py-4 flex items-center gap-3 bg-white sticky top-0 z-10">
-        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-lg">📚</div>
+        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-lg">📄</div>
         <div>
-          <div className="font-bold text-[15px] tracking-wide">DS Tutor</div>
-          <div className="text-xs text-gray-400 font-mono">Data Structures · Exam Prep</div>
+          <div className="font-bold text-[15px] tracking-wide">Invoice Assistant</div>
+          <div className="text-xs text-gray-400 font-mono">Upload Invoice PDF · Ask Anything</div>
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <label className="text-xs text-gray-600 cursor-pointer hover:text-indigo-600 transition flex items-center gap-2 border border-gray-200 px-3 py-1.5 rounded-lg hover:border-indigo-300">
-            📄 Upload PDF
+          <label className="text-xs text-white cursor-pointer transition flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 px-3 py-1.5 rounded-lg hover:opacity-90">
+            📄 Upload Invoice PDF
             <input type="file" accept=".pdf" onChange={handlePDFUpload} className="hidden" />
           </label>
           
           {/* Voice Toggle */}
           <button
-            onClick={() => setVoiceEnabled(!voiceEnabled)}
+            onClick={handleVoiceToggle}
             className={`text-xs cursor-pointer transition flex items-center gap-2 border px-3 py-1.5 rounded-lg ${
               voiceEnabled 
                 ? "text-indigo-600 border-indigo-300 bg-indigo-50" 
@@ -171,7 +199,7 @@ export default function DSTutorPage() {
                           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                           <polyline points="14 2 14 8 20 8"/>
                         </svg>
-                        From PDF
+                        From Invoice
                       </div>
                       <span className="text-xs text-gray-500">{msg.sources.join(", ")}</span>
                     </div>
@@ -183,16 +211,7 @@ export default function DSTutorPage() {
                     <div className="mt-3 pt-3 border-t border-gray-200">
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => {
-                            if (currentAudio) {
-                              currentAudio.pause();
-                              setCurrentAudio(null);
-                            }
-                            const audio = new Audio(msg.audio);
-                            audio.play();
-                            setCurrentAudio(audio);
-                            audio.onended = () => setCurrentAudio(null);
-                          }}
+                          onClick={() => handleAudioPlay(msg.audio)}
                           className="flex items-center gap-2 text-xs text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-200 hover:bg-indigo-100 transition"
                         >
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
@@ -233,7 +252,7 @@ export default function DSTutorPage() {
           <div className="text-[11px] text-gray-500 mb-2 uppercase tracking-wider">Try asking</div>
           <div className="flex flex-wrap gap-2">
             {SUGGESTIONS.map((s, i) => (
-              <button key={i} onClick={() => send(s)} className="bg-white border border-gray-200 rounded-full px-3.5 py-1.5 text-xs text-gray-600 hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 transition">
+              <button key={i} onClick={handleSuggestion(s)} className="bg-white border border-gray-200 rounded-full px-3.5 py-1.5 text-xs text-gray-600 hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 transition">
                 {s}
               </button>
             ))}
@@ -248,15 +267,15 @@ export default function DSTutorPage() {
             <textarea
               ref={inputRef}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-              placeholder="Ask about any data structure concept..."
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask about invoice amounts, vendors, dates..."
               rows={1}
               className="flex-1 bg-transparent border-none outline-none text-gray-800 text-sm resize-none max-h-[120px] overflow-y-auto"
             />
           </div>
           <button
-            onClick={() => send()}
+            onClick={handleSend}
             disabled={!input.trim() || loading}
             className={`w-10 h-10 rounded-xl border-none flex items-center justify-center flex-shrink-0 transition ${input.trim() && !loading ? "bg-gradient-to-br from-indigo-500 to-purple-600 text-white cursor-pointer" : "bg-gray-200 text-gray-400 cursor-default"}`}
           >

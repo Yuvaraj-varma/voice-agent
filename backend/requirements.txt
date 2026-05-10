@@ -31,3 +31,4 @@ duckduckgo-search
 
 # Core
 sentence-transformers
+pypdf

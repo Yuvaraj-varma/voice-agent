@@ -5,9 +5,11 @@ import httpx
 import tempfile
 import base64
 import os
+
 from abc import ABC, abstractmethod
 from typing import Optional
 from pathlib import Path
+from datetime import datetime  
 import google.generativeai as genai
 
 from utils.logger import logger
@@ -71,7 +73,7 @@ class GeminiVoiceAgent(BaseVoiceAgent):
 
             audio_b64 = base64.b64encode(audio).decode()
 
-            model = genai.GenerativeModel("gemini-2.5-flash-lite")
+            model = genai.GenerativeModel("gemini-1.5-flash")
             response = await asyncio.to_thread(model.generate_content, [
                 "Transcribe this audio accurately. Output ONLY the text:",
                 {"mime_type": "audio/webm", "data": audio_b64},
@@ -103,13 +105,13 @@ class GeminiVoiceAgent(BaseVoiceAgent):
                     return f"Search failed: {e}"
 
             llm = ChatGoogleGenerativeAI(
-                model="gemini-1.5-flash",
+                model="gemini-2.5-flash",
                 google_api_key=os.getenv("VOICE_AGENT_GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY"),
                 temperature=0.3
             )
 
             prompt = ChatPromptTemplate.from_messages([
-                ("system", "You are a helpful voice assistant. Answer briefly and clearly. Use web_search tool for real-time info like news, weather, prices, current events."),
+                ("system", f"You are a helpful voice assistant. Today's date is {datetime.now().strftime('%B %d, %Y')}. Answer briefly and clearly. Use web_search tool for real-time info like news, weather, prices, current events."),
                 ("human", "{input}"),
                 ("placeholder", "{agent_scratchpad}"),
             ])

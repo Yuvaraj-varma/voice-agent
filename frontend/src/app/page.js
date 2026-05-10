@@ -42,10 +42,10 @@ export default function Home() {
           </button>
         </Link>
 
-        {/* 📚 DS Tutor */}
+        {/* 🧾 Invoice System */}
         <Link href="/ds-tutor">
           <button className="flex items-center gap-2 px-10 py-4 text-lg font-semibold text-white bg-gradient-to-r from-orange-500 to-red-500 rounded-full shadow-lg hover:scale-105 transition-transform">
-            📚 DS Tutor
+            🧾 Invoice System
           </button>
         </Link>
 

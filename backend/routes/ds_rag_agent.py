@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, UploadFile, File, Form
 from pydantic import BaseModel
 from typing import List, Optional
 import time
@@ -9,95 +9,124 @@ import os
 from services.rag_service import RAGService
 from utils.logger import logger
 
-router = APIRouter(tags=["📚 DS Tutor (RAG)"])
+router = APIRouter(tags=["🧾 Invoice System (RAG)"])
 
 
 # ------------------------------------------
-# REQUEST / RESPONSE MODELS
+# MODELS
 # ------------------------------------------
-class DSRagRequest(BaseModel):
+class InvoiceQueryRequest(BaseModel):
     question: str
-    voiceId: Optional[str] = "EXAVITQu4vr4xnSDxMaL"  # Sarah voice
+    voiceId: Optional[str] = "EXAVITQu4vr4xnSDxMaL"
     includeAudio: Optional[bool] = False
+    session_id: Optional[str] = None
 
 
-class RAGResponse(BaseModel):
+class InvoiceQueryResponse(BaseModel):
     answer: str
     sources: List[str]
     provider: Optional[str] = None
-    audio: Optional[str] = None  # Base64 encoded audio
+    audio: Optional[str] = None
+
+
+class UploadResponse(BaseModel):
+    message: str
+    chunks: int
 
 
 # ------------------------------------------
-# TTS FOR DS TUTOR
+# TTS
 # ------------------------------------------
-async def synthesize_ds_tutor_speech(text: str, voice_id: str) -> Optional[str]:
-    ds_elevenlabs_key = os.getenv("DS_TUTOR_ELEVENLABS_API_KEY") or os.getenv("ELEVENLABS_API_KEY")
-
+async def synthesize_speech(text: str, voice_id: str) -> Optional[str]:
+    key = os.getenv("DS_TUTOR_ELEVENLABS_API_KEY") or os.getenv("ELEVENLABS_API_KEY")
     if not text:
         return None
 
-    # Try ElevenLabs first
-    if ds_elevenlabs_key:
+    if key:
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 res = await client.post(
                     f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
-                    headers={"xi-api-key": ds_elevenlabs_key, "Content-Type": "application/json"},
-                    json={"text": text[:5000], "model_id": "eleven_turbo_v2", "voice_settings": {"stability": 0.7, "similarity_boost": 0.8}},
+                    headers={"xi-api-key": key, "Content-Type": "application/json"},
+                    json={"text": text[:5000], "model_id": "eleven_turbo_v2"},
                 )
             if res.status_code == 200:
-                audio_b64 = base64.b64encode(res.content).decode()
-                return f"data:audio/mpeg;base64,{audio_b64}"
-            logger.error(f"DS Tutor ElevenLabs error {res.status_code}, falling back to gTTS")
+                return f"data:audio/mpeg;base64,{base64.b64encode(res.content).decode()}"
         except Exception as e:
-            logger.error(f"DS Tutor ElevenLabs failed: {e}, falling back to gTTS")
+            logger.error(f"ElevenLabs failed: {e}")
 
-    # Fallback to gTTS
     try:
         from gtts import gTTS
         import io
-        tts = gTTS(text=text[:5000], lang='en', slow=False)
+        tts = gTTS(text=text[:5000], lang="en", slow=False)
         buf = io.BytesIO()
         tts.write_to_fp(buf)
         buf.seek(0)
-        audio_b64 = base64.b64encode(buf.read()).decode()
-        return f"data:audio/mpeg;base64,{audio_b64}"
+        return f"data:audio/mpeg;base64,{base64.b64encode(buf.read()).decode()}"
     except Exception as e:
         logger.error(f"gTTS error: {e}")
         return None
 
 
 # ------------------------------------------
-# SERVICE ACCESS (FROM APP STATE)
+# DEPENDENCY
 # ------------------------------------------
 def get_service(request: Request) -> RAGService:
     return request.app.state.rag_service
 
 
 # ------------------------------------------
-# ENDPOINT
+# UPLOAD INVOICE PDF → PINECONE
 # ------------------------------------------
-@router.post("/ds-rag-agent", response_model=RAGResponse, summary="📚 Ask DS Tutor", description="Ask a Data Science question → Pinecone finds relevant docs → Gemini answers from your PDFs")
-async def ds_rag_query(
-    body: DSRagRequest,
+@router.post("/upload-invoice", response_model=UploadResponse, summary="📤 Upload Invoice PDF")
+async def upload_invoice(
+    file: UploadFile = File(...),
+    session_id: str = Form("default"),
+    service: RAGService = Depends(get_service),
+):
+    if not file.filename.endswith(".pdf"):
+        from fastapi import HTTPException
+        raise HTTPException(400, "Only PDF files are supported")
+
+    content = await file.read()
+    chunks = await service.ingest_invoice(content, file.filename, session_id)
+
+    return UploadResponse(
+        message=f"Invoice '{file.filename}' uploaded and indexed successfully",
+        chunks=chunks,
+    )
+
+
+# ------------------------------------------
+# QUERY INVOICES
+# ------------------------------------------
+@router.post("/invoice-query", response_model=InvoiceQueryResponse, summary="🔍 Query Invoices")
+async def invoice_query(
+    body: InvoiceQueryRequest,
     service: RAGService = Depends(get_service),
 ):
     start = time.perf_counter()
 
-    answer, sources, provider = await service.process_question(body.question)
-    
-    # Generate audio if requested
+    answer, sources, provider = await service.process_question(body.question, body.session_id or "default")
+
     audio = None
     if body.includeAudio and body.voiceId:
-        audio = await synthesize_ds_tutor_speech(answer, body.voiceId)
+        audio = await synthesize_speech(answer, body.voiceId)
 
     elapsed = round(time.perf_counter() - start, 3)
-    logger.info(f"RAG response generated in {elapsed}s (audio: {audio is not None})")
+    logger.info(f"Invoice query answered in {elapsed}s")
 
-    return RAGResponse(
-        answer=answer,
-        sources=sources,
-        provider=provider,
-        audio=audio,
-    )
+    return InvoiceQueryResponse(answer=answer, sources=sources, provider=provider, audio=audio)
+
+
+# ------------------------------------------
+# KEEP OLD ROUTES AS ALIASES (backward compat)
+# ------------------------------------------
+@router.post("/upload-pdf", response_model=UploadResponse, include_in_schema=False)
+async def upload_pdf_alias(file: UploadFile = File(...), service: RAGService = Depends(get_service)):
+    return await upload_invoice(file, service)
+
+
+@router.post("/ds-rag-agent", response_model=InvoiceQueryResponse, include_in_schema=False)
+async def ds_rag_alias(body: InvoiceQueryRequest, service: RAGService = Depends(get_service)):
+    return await invoice_query(body, service)
